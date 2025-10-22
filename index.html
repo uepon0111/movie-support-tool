@@ -1,0 +1,1033 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>動画再生支援ツール</title>
+
+  <!-- ====== Favicon / Icons (クロスプラットフォーム対応) ====== -->
+  <!-- Standard favicon files -->
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png" />
+  <link rel="shortcut icon" href="favicon.ico" />
+
+  <!-- PWA / Android / Chrome: web app manifest -->
+  <link rel="manifest" href="site.webmanifest" />
+
+  <!-- Apple touch icons (iPhone / iPad のホーム画面用) -->
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png" />
+  <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png" />
+  <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152.png" />
+  <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120.png" />
+  <link rel="apple-touch-icon" sizes="76x76" href="apple-touch-icon-76.png" />
+
+  <!-- Safari pinned tab (SVG) -->
+  <link rel="mask-icon" href="safari-pinned-tab.svg" color="#0b74ff" />
+
+  <!-- High-resolution icons often used for Android home screen / Chrome (例) -->
+  <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="favicon-512.png" />
+
+  <!-- Windows tile (mstile) -->
+  <meta name="msapplication-TileColor" content="#0b74ff" />
+  <meta name="msapplication-TileImage" content="mstile-150x150.png" />
+
+  <!-- iOS / Safari web app settings -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="動画再生支援ツール" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+  <!-- ブラウザのテーマカラー（Android Chrome 等で使用） -->
+  <meta name="theme-color" content="#0b74ff" />
+  <!-- ============================================================ -->
+
+  <style>
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
+    .center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;gap:16px}
+    .btn{appearance:none;border:0;padding:10px 12px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;background:#fff}
+    .primary{background:#0b74ff;color:white}
+    .muted{background:#f0f0f0;color:#111}
+
+    /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
+    #pickerScreen{background:#fff;color:#111}
+    #pickerScreen h1,#pickerScreen p{color:inherit}
+    #pickerScreen .file-info{color:#444}
+
+    /* 履歴リスト（最小限のスタイル） */
+    .history-wrap{width:100%;max-width:720px;margin-top:8px}
+    .history-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px}
+    .history-left{display:flex;align-items:center;gap:8px}
+    .history-controls{display:flex;align-items:center;gap:8px}
+    .history-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
+    .history-item{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;background:transparent}
+    .history-item:hover{background:#f5f5f5}
+    .thumb{width:96px;height:54px;background:#ddd;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .meta{flex:1;min-width:0}
+    .meta .name{font-size:14px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .meta .sub{font-size:12px;color:#666;margin-top:2px}
+    .history-actions{display:flex;gap:6px}
+    .small-btn{padding:6px 8px;border-radius:8px;font-size:13px}
+    .name-input{width:100%;font-size:14px;padding:6px;border-radius:6px;border:1px solid #ddd}
+    .edit-controls{display:flex;gap:6px;margin-left:6px}
+    select.sort-select{padding:6px;border-radius:6px;border:1px solid #ddd;background:#fff}
+
+    /* ビューア全体 */
+    .viewer{display:none;height:100vh;width:100vw}
+    .video-wrap{height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:#000;position:relative;touch-action:none}
+    video{max-width:100%;max-height:100vh;width:auto;height:auto;object-fit:contain;outline:none;touch-action:none;transition:transform .12s ease;}
+    video.mirrored{transform:scaleX(-1);}
+
+    /* 上部レイアウト：左（戻る+スキップ）、中央（シークバー）、右（再生トグル＋速度） */
+    .top-control {
+      position:absolute;
+      top:8px;
+      z-index:13;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:6px 8px;
+      background:rgba(0,0,0,0.12);
+      border-radius:10px;
+      backdrop-filter:blur(6px);
+      box-sizing:border-box;
+    }
+
+    /* 左：戻る（固定左端） */
+    #topBack {
+      left:12px;
+      top:8px;
+    }
+
+    /* まとめたスキップ群（戻るの直下に配置される、左寄せ） */
+    .skip-group{
+      position:absolute;
+      left:12px;
+      z-index:14;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      transform:none;
+      max-width: calc(100vw - 24px);
+      box-sizing:border-box;
+    }
+    .skip-row{
+      display:flex;
+      gap:6px;
+      align-items:center;
+      flex-wrap:wrap;
+      max-width:100%;
+    }
+    .skip-row .skip-btn{
+      appearance:none;border:0;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.95);box-shadow:0 1px 3px rgba(0,0,0,0.18);cursor:pointer;font-size:13px;
+      flex:0 1 auto;
+      min-width:0;
+      white-space:nowrap;
+      color:#111; /* 明示しておく（他ボタンと統一） */
+    }
+
+    /* 中央：シークバー（幅は JS で調整） */
+    #topSeek {
+      position:absolute;
+      top:8px;
+      z-index:12;
+      left:auto;
+      right:auto;
+      padding:6px 12px;
+      transform:none;
+      transition: left .12s ease, right .12s ease;
+      box-sizing:border-box;
+      background:rgba(0,0,0,0.06);
+      border-radius:10px;
+    }
+
+    /* シークバー入力自体 */
+    .seek {
+      -webkit-appearance: none;
+      appearance: none;
+      width:100%;
+      height:4px;
+      background:rgba(255,255,255,0.14);
+      border-radius:4px;
+      outline:none;
+      cursor:pointer;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+      position:relative;
+      z-index:1;
+    }
+    .seek::-webkit-slider-runnable-track{
+      height:4px;border-radius:4px;
+      background:linear-gradient(90deg, rgba(11,116,255,0.9) 0%, rgba(11,116,255,0.9) 0%, rgba(255,255,255,0.14) 0%);
+    }
+    .seek::-webkit-slider-thumb{
+      -webkit-appearance:none;width:10px;height:10px;border-radius:50%;margin-top:-3px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.4);
+    }
+    .seek::-moz-range-track{height:4px;border-radius:4px;background:rgba(255,255,255,0.14);}
+    .seek::-moz-range-progress{background:rgba(11,116,255,0.9);height:4px;border-radius:4px;}
+    .seek::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#fff;border:0;box-shadow:0 1px 2px rgba(0,0,0,0.4);}
+
+    /* マーカー表示レイヤー（シークバー上に重ねる） */
+    .marker-layer {
+      position:absolute;
+      left:6px; right:6px;
+      top:6px;
+      bottom:6px;
+      pointer-events:none;
+      z-index:2;
+    }
+    .marker {
+      position:absolute;
+      width:2px;
+      height:12px;
+      border-radius:2px;
+      background:#ffdd00;
+      box-shadow:0 0 6px rgba(255,220,0,0.6);
+      pointer-events:none;
+      transform: none;
+    }
+    .marker[aria-label]{cursor:default}
+
+    /* 右：再生トグル（固定右端） */
+    #topToggle { right:12px; top:8px; position:absolute; z-index:13; }
+
+    .top-btn{
+      padding:6px 10px;border-radius:8px;font-size:13px;background:rgba(255,255,255,0.95);
+      box-shadow:0 1px 3px rgba(0,0,0,0.18);cursor:pointer;
+      color:#111; /* 他ボタンと合わせる */
+    }
+    .top-btn[disabled]{opacity:0.5;cursor:default}
+
+    /* ここを変更：停止（aria-pressed=true）の見た目を他のボタンと同じにする */
+    #playToggleBtn[aria-pressed="true"]{
+      background: rgba(255,255,255,0.95);
+      color: #111;
+    }
+
+    /* 速度操作は再生の下に表示（右端寄せ） */
+    .overlay-right{
+      position:absolute;
+      right:12px;
+      top:48px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      padding:6px;
+      border-radius:10px;
+      background:rgba(0,0,0,0.24);
+      backdrop-filter:blur(6px);
+      z-index:11;
+      align-items:center;
+    }
+    .overlay-right .btn{padding:8px 10px;border-radius:8px;font-size:14px}
+    .speed-display{min-width:64px;text-align:center;color:#fff;font-weight:600}
+
+    /* マーカー操作ボタン（追加） */
+    .marker-controls{display:flex;gap:6px;align-items:center}
+    .marker-controls .marker-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer}
+
+    @media (max-width:480px){
+      .overlay-right{top:44px}
+      .seek::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px}
+      .seek{height:6px}
+      #topSeek{left:12px; right:12px}
+      .skip-row .skip-btn{padding:6px 8px;font-size:12px}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ファイル取得画面 -->
+  <main id="pickerScreen" class="center" aria-live="polite">
+    <div style="text-align:center">
+      <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
+      <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、自動で動画画面に遷移します）。</p>
+    </div>
+
+    <div style="display:flex;gap:8px;align-items:center">
+      <label class="btn primary" id="pickBtn" for="fileInput" role="button">ファイルを取得</label>
+      <input id="fileInput" type="file" accept="video/*" style="display:none" />
+      <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
+    </div>
+
+    <div class="file-info" id="fileName" style="color:#444">まだファイルが選択されていません</div>
+
+    <div class="history-wrap" id="historyWrap">
+      <div class="history-head">
+        <div class="history-left">
+          <strong>再生履歴</strong>
+          <div class="history-controls">
+            <label for="sortBy" style="font-size:13px;color:#444">並び替え</label>
+            <select id="sortBy" class="sort-select" aria-label="並び替え基準">
+              <option value="created">追加順</option>
+              <option value="name">名前順</option>
+            </select>
+
+            <label for="sortOrder" style="font-size:13px;color:#444">順序</label>
+            <select id="sortOrder" class="sort-select" aria-label="昇順降順">
+              <option value="desc">降順</option>
+              <option value="asc">昇順</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <button id="clearHistoryBtn" class="small-btn">履歴を消去</button>
+        </div>
+      </div>
+      <div class="history-list" id="historyList" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <!-- ビューア画面 -->
+  <section id="viewer" class="viewer" aria-hidden="true">
+    <div class="video-wrap" id="videoWrap">
+      <video id="video" playsinline webkit-playsinline preload="metadata" tabindex="-1" controlslist="nodownload"></video>
+
+      <!-- 左上：戻るボタン -->
+      <div id="topBack" class="top-control" role="group" aria-label="戻るボタン">
+        <button id="backBtn" class="top-btn" aria-label="最初の画面に戻る">戻る</button>
+      </div>
+
+      <!-- 左上：まとめたスキップ群（戻るの下、常に左寄せ） -->
+      <div id="skipGroup" class="skip-group" aria-hidden="false">
+        <!-- 3秒グループ: 「3秒戻る 3秒進む」 -->
+        <div class="skip-row" aria-label="3秒スキップ">
+          <button id="back3Btn" class="skip-btn" aria-label="3秒戻る">« 3s</button>
+          <button id="fwd3Btn" class="skip-btn" aria-label="3秒進む">3s »</button>
+        </div>
+        <!-- 5秒グループ -->
+        <div class="skip-row" aria-label="5秒スキップ">
+          <button id="back5Btn" class="skip-btn" aria-label="5秒戻る">« 5s</button>
+          <button id="fwd5Btn" class="skip-btn" aria-label="5秒進む">5s »</button>
+        </div>
+
+        <!-- ミラー -->
+        <div class="skip-row" aria-label="ミラー操作">
+          <button id="mirrorBtn" class="skip-btn" aria-pressed="false" aria-label="左右反転（ミラー）">ミラー</button>
+        </div>
+      </div>
+
+      <!-- 中央：シークバー（位置は JS で中央寄せになるよう調整） -->
+      <div id="topSeek" class="top-control" role="group" aria-label="再生バー">
+        <input id="seekBar" class="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="再生位置" />
+        <div id="markerLayer" class="marker-layer" aria-hidden="true"></div>
+      </div>
+
+      <!-- 右上：再生/一時停止 -->
+      <div id="topToggle" class="top-control" role="group" aria-label="再生操作">
+        <button id="playToggleBtn" class="top-btn" aria-pressed="false" aria-label="再生">再生</button>
+      </div>
+
+      <!-- 右上：速度操作（再生ボタンの下） -->
+      <div class="overlay-right" id="overlayRight" aria-hidden="false">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button id="speedMinus" class="btn" aria-label="速度を下げる">−</button>
+          <div id="speedDisplay" class="speed-display">1.00x</div>
+          <button id="speedPlus" class="btn" aria-label="速度を上げる">＋</button>
+        </div>
+
+        <div class="marker-controls" role="group" aria-label="マーカー操作">
+          <button id="markerJump" class="marker-btn" aria-label="マーカーへジャンプ">&gt;</button>
+          <button id="markerAdd" class="marker-btn" aria-label="マーカーを追加">+</button>
+          <button id="markerRemove" class="marker-btn" aria-label="マーカーを削除">-</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const fileNameEl = document.getElementById('fileName');
+    const pickBtn = document.getElementById('pickBtn');
+    const reloadBtn = document.getElementById('reloadBtn');
+
+    const pickerScreen = document.getElementById('pickerScreen');
+    const viewer = document.getElementById('viewer');
+    const video = document.getElementById('video');
+    const videoWrap = document.getElementById('videoWrap');
+
+    const playToggleBtn = document.getElementById('playToggleBtn');
+    const speedMinus = document.getElementById('speedMinus');
+    const speedPlus = document.getElementById('speedPlus');
+    const speedDisplay = document.getElementById('speedDisplay');
+
+    const backBtn = document.getElementById('backBtn');
+
+    const back3Btn = document.getElementById('back3Btn');
+    const back5Btn = document.getElementById('back5Btn');
+    const fwd3Btn = document.getElementById('fwd3Btn');
+    const fwd5Btn = document.getElementById('fwd5Btn');
+
+    const mirrorBtn = document.getElementById('mirrorBtn');
+
+    const skipGroup = document.getElementById('skipGroup');
+
+    const historyList = document.getElementById('historyList');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    const sortBySelect = document.getElementById('sortBy');
+    const sortOrderSelect = document.getElementById('sortOrder');
+
+    const seekBar = document.getElementById('seekBar');
+    const topBack = document.getElementById('topBack');
+    const topSeek = document.getElementById('topSeek');
+    const topToggle = document.getElementById('topToggle');
+    const overlayRight = document.getElementById('overlayRight');
+
+    const markerAddBtn = document.getElementById('markerAdd');
+    const markerJumpBtn = document.getElementById('markerJump');
+    const markerRemoveBtn = document.getElementById('markerRemove');
+    const markerLayer = document.getElementById('markerLayer');
+
+    let currentObjectUrl = null;
+    let currentHistoryId = null;
+    const MAX_HISTORY = 40;
+
+    const SPEED_STEP = 0.05;
+    const SPEED_MIN = 0.05;
+    const SPEED_MAX = 4.0;
+    let isSeeking = false;
+
+    let markers = [];
+
+    const SORT_KEY = 'videoHistorySort';
+    function loadSortSettings(){
+      try{
+        const raw = localStorage.getItem(SORT_KEY);
+        if (!raw) return {by:'created', order:'desc'};
+        return JSON.parse(raw);
+      }catch(e){ return {by:'created', order:'desc'}; }
+    }
+    function saveSortSettings(s){ localStorage.setItem(SORT_KEY, JSON.stringify(s)); }
+    let sortSettings = loadSortSettings();
+    sortBySelect.value = sortSettings.by;
+    sortOrderSelect.value = sortSettings.order;
+
+    const DB_NAME = 'videoHistory';
+    const STORE_NAME = 'videos';
+    let dbPromise = null;
+
+    function openDB(){
+      if (dbPromise) return dbPromise;
+      dbPromise = new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)){
+            const store = db.createObjectStore(STORE_NAME, {keyPath:'id', autoIncrement:true});
+            store.createIndex('byLastModified', ['name','size','lastModified'], {unique:false});
+            store.createIndex('byCreated', 'createdAt');
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return dbPromise;
+    }
+
+    async function saveFileToHistory(file){
+      try{
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+
+        const all = await getAllFromStore(store);
+        const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+        if (match) {
+          match.createdAt = Date.now();
+          store.put(match);
+          await tx.complete;
+          trimHistoryLimit(db);
+          return match.id;
+        }
+
+        const entry = { name: file.name, size: file.size, type: file.type, lastModified: file.lastModified || 0, blob: file.slice(0, file.size, file.type), createdAt: Date.now() };
+        const addReq = store.add(entry);
+        const id = await new Promise((res, rej) => { addReq.onsuccess = () => res(addReq.result); addReq.onerror = () => rej(addReq.error); });
+        await tx.complete;
+        trimHistoryLimit(db);
+        return id;
+      }catch(err){ console.warn('保存に失敗しました', err); }
+    }
+
+    function getAllFromStore(store){
+      return new Promise((resolve, reject) => {
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function getHistory(){
+      const db = await openDB();
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const all = await getAllFromStore(store);
+      return all;
+    }
+
+    async function getEntry(id){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(Number(id));
+        req.onsuccess = ()=>resolve(req.result);
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    async function deleteEntry(id){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.delete(Number(id));
+        req.onsuccess = ()=>resolve();
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    async function clearHistory(){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.clear();
+        req.onsuccess = ()=>resolve();
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    async function trimHistoryLimit(db){
+      try{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const all = await getAllFromStore(store);
+        const sorted = all.sort((a,b)=>b.createdAt - a.createdAt);
+        if (sorted.length <= MAX_HISTORY) return;
+        const toRemove = sorted.slice(MAX_HISTORY);
+        for (const item of toRemove) store.delete(item.id);
+      }catch(e){console.warn(e)}
+    }
+
+    async function updateEntryName(id, newName){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(Number(id));
+        req.onsuccess = ()=>{
+          const val = req.result;
+          if (!val) return resolve(false);
+          val.name = newName;
+          const put = store.put(val);
+          put.onsuccess = ()=>resolve(true);
+          put.onerror = ()=>reject(put.error);
+        };
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    function formatBytes(n){ if (n<1024) return n + ' B'; if (n<1024*1024) return Math.round(n/1024) + ' KB'; return (n/(1024*1024)).toFixed(2) + ' MB'; }
+
+    function sortItems(items){
+      const by = sortSettings.by || 'created';
+      const order = (sortSettings.order === 'asc') ? 1 : -1;
+      const copy = items.slice();
+      if (by === 'created'){
+        copy.sort((a,b)=> (a.createdAt - b.createdAt) * order);
+      } else if (by === 'name'){
+        copy.sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}) * order);
+      }
+      return copy;
+    }
+
+    async function renderHistory(){
+      historyList.innerHTML = '';
+      const items = await getHistory();
+      const final = sortItems(items);
+
+      if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
+
+      for (const it of final){
+        const el = document.createElement('div');
+        el.className = 'history-item';
+
+        const thumb = document.createElement('div'); thumb.className='thumb';
+        const img = document.createElement('img');
+        try{
+          const url = URL.createObjectURL(it.blob);
+          img.src = url;
+          img.onload = ()=>{ URL.revokeObjectURL(url); };
+        }catch(e){ /* ignore */ }
+        thumb.appendChild(img);
+
+        const meta = document.createElement('div'); meta.className='meta';
+
+        const nameWrap = document.createElement('div');
+        const name = document.createElement('div'); name.className='name'; name.textContent = it.name;
+        nameWrap.appendChild(name);
+
+        const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
+        meta.appendChild(nameWrap); meta.appendChild(sub);
+
+        const actions = document.createElement('div'); actions.className='history-actions';
+        const openBtn = document.createElement('button'); openBtn.className='small-btn'; openBtn.textContent='開く';
+        const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
+        const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
+
+        openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
+        delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
+
+        editBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          nameWrap.innerHTML = '';
+          const input = document.createElement('input'); input.className='name-input'; input.value = it.name;
+          input.setAttribute('aria-label', 'ファイル名編集');
+          const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
+          const cancelBtn = document.createElement('button'); cancelBtn.className='small-btn'; cancelBtn.textContent='キャンセル';
+          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn);
+
+          nameWrap.appendChild(input); nameWrap.appendChild(editControls);
+          input.focus();
+
+          function finishSave(){
+            const newName = input.value.trim() || it.name;
+            updateEntryName(it.id, newName).then(()=>{
+              renderHistory();
+            }).catch((err)=>{ console.warn('名前更新失敗', err); alert('名前の更新に失敗しました'); renderHistory(); });
+          }
+          function finishCancel(){ renderHistory(); }
+
+          saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
+          cancelBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
+
+          input.addEventListener('keydown', (ev)=>{
+            if (ev.key === 'Enter') { ev.preventDefault(); finishSave(); }
+            if (ev.key === 'Escape') { ev.preventDefault(); finishCancel(); }
+          });
+        });
+
+        actions.appendChild(openBtn); actions.appendChild(editBtn); actions.appendChild(delBtn);
+
+        el.appendChild(thumb); el.appendChild(meta); el.appendChild(actions);
+        historyList.appendChild(el);
+      }
+    }
+
+    sortBySelect.addEventListener('change', ()=>{
+      sortSettings.by = sortBySelect.value;
+      saveSortSettings(sortSettings);
+      renderHistory();
+    });
+    sortOrderSelect.addEventListener('change', ()=>{
+      sortSettings.order = sortOrderSelect.value;
+      saveSortSettings(sortSettings);
+      renderHistory();
+    });
+
+    clearHistoryBtn.addEventListener('click', async ()=>{
+      if (!confirm('履歴を全て消去しますか？')) return;
+      await clearHistory();
+      renderHistory();
+    });
+
+    function preventTouchScroll(e){
+      if ((overlayRight && overlayRight.contains(e.target)) || (topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target))) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    function adjustTopSeek() {
+      try {
+        const margin = 8;
+        const baseLeftMin = 12;
+        if (topBack) topBack.style.left = baseLeftMin + 'px';
+        if (skipGroup) {
+          skipGroup.style.left = baseLeftMin + 'px';
+        }
+
+        let leftEdge = baseLeftMin;
+        try {
+          const bRect = topBack.getBoundingClientRect();
+          leftEdge = Math.max(leftEdge, Math.round(bRect.right + margin));
+        } catch (e){}
+
+        try {
+          const sRect = skipGroup.getBoundingClientRect();
+          if (sRect.width > 0) leftEdge = Math.max(leftEdge, Math.round(sRect.right + margin));
+          if (topBack) {
+            const backRect = topBack.getBoundingClientRect();
+            skipGroup.style.top = Math.round(backRect.bottom + 6) + 'px';
+          }
+        } catch (e){}
+
+        let rightEdge = 12;
+        try {
+          const tRect = topToggle.getBoundingClientRect();
+          rightEdge = Math.max(12, Math.round(window.innerWidth - tRect.left + margin));
+        } catch (e){}
+
+        const minSeekWidth = 180;
+        const available = window.innerWidth - leftEdge - rightEdge;
+        if (available < minSeekWidth) {
+          const deficit = minSeekWidth - available;
+          const reduceLeft = Math.ceil(deficit / 2);
+          const reduceRight = Math.floor(deficit / 2);
+          leftEdge = Math.max(6, leftEdge - reduceLeft);
+          rightEdge = Math.max(6, rightEdge - reduceRight);
+        }
+
+        if (topSeek) {
+          topSeek.style.left = leftEdge + 'px';
+          topSeek.style.right = rightEdge + 'px';
+        }
+
+        repositionMarkerLayer();
+      } catch (err) {
+        if (topSeek) { topSeek.style.left = ''; topSeek.style.right = ''; }
+      }
+    }
+
+    window.addEventListener('resize', () => { adjustTopSeek(); renderMarkers(); });
+    window.addEventListener('orientationchange', () => { setTimeout(adjustTopSeek, 80); setTimeout(renderMarkers, 100); });
+    window.addEventListener('load', () => { setTimeout(adjustTopSeek, 120); setTimeout(renderMarkers, 140); });
+
+    async function openViewer(autoPlay = false){
+      if (!currentObjectUrl) return;
+      pickerScreen.style.display = 'none';
+      viewer.style.display = 'block';
+      viewer.setAttribute('aria-hidden','false');
+
+      video.controls = false;
+
+      video.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('touchmove', preventTouchScroll, {passive:false});
+      video.addEventListener('click', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('dblclick', (e) => { e.stopPropagation(); }, {passive:false});
+
+      videoWrap.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
+      videoWrap.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
+      videoWrap.addEventListener('touchmove', preventTouchScroll, {passive:false});
+
+      if (autoPlay) {
+        try { await video.play(); } catch (err) { console.warn('自動再生できませんでした:', err); }
+      }
+
+      updateToggleButton();
+      updateSpeedDisplay();
+
+      setTimeout(adjustTopSeek, 60);
+      setTimeout(adjustTopSeek, 300);
+    }
+
+    fileInput.addEventListener('change', async () => {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) {
+        fileNameEl.textContent = 'まだファイルが選択されていません';
+        return;
+      }
+
+      fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+
+      currentObjectUrl = URL.createObjectURL(f);
+      video.src = currentObjectUrl;
+      video.load();
+      video.playbackRate = 1.0;
+
+      markers = [];
+      clearMarkerElements();
+
+      const hid = await saveFileToHistory(f);
+      currentHistoryId = hid || null;
+      renderHistory();
+
+      await openViewer(true);
+    });
+
+    async function openFromHistory(id){
+      const entry = await getEntry(id);
+      if (!entry) return alert('履歴が見つかりませんでした');
+
+      if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
+      currentObjectUrl = URL.createObjectURL(entry.blob);
+      video.src = currentObjectUrl;
+      video.load();
+      video.playbackRate = 1.0;
+      currentHistoryId = entry.id;
+      fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
+
+      markers = [];
+      clearMarkerElements();
+
+      await openViewer(true);
+    }
+
+    async function togglePlay() {
+      if (video.paused || video.ended) {
+        try { await video.play(); } catch (err) { console.warn('再生できませんでした:', err); alert('再生できませんでした。ページの許可や操作を確認してください。'); }
+      } else {
+        video.pause();
+      }
+      updateToggleButton();
+      setTimeout(adjustTopSeek, 30);
+    }
+
+    function updateToggleButton() {
+      if (video.paused || video.ended) {
+        playToggleBtn.textContent = '再生';
+        playToggleBtn.setAttribute('aria-pressed','false');
+        // 変更: class の付け外しは行わない（見た目は aria-pressed で調整）
+      } else {
+        playToggleBtn.textContent = '停止';
+        playToggleBtn.setAttribute('aria-pressed','true');
+        // 変更: class の付け外しは行わない
+      }
+    }
+
+    playToggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
+
+    function updateSpeedDisplay() { speedDisplay.textContent = video.playbackRate.toFixed(2) + 'x'; }
+    function changeSpeed(delta) {
+      let newRate = Math.round((video.playbackRate + delta) / SPEED_STEP) * SPEED_STEP;
+      if (newRate < SPEED_MIN) newRate = SPEED_MIN;
+      if (newRate > SPEED_MAX) newRate = SPEED_MAX;
+      video.playbackRate = Number(newRate.toFixed(2));
+      updateSpeedDisplay();
+    }
+    speedMinus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(-SPEED_STEP); });
+    speedPlus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(SPEED_STEP); });
+
+    function seekBy(deltaSec){
+      if (!video.duration || !isFinite(video.duration)) return;
+      let t = video.currentTime + deltaSec;
+      if (t < 0) t = 0;
+      if (t > video.duration) t = video.duration;
+      video.currentTime = t;
+    }
+
+    back3Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(-3); });
+    back5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(-5); });
+    fwd3Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(3); });
+    fwd5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(5); });
+
+    [back3Btn,back5Btn,fwd3Btn,fwd5Btn].forEach(btn=>{
+      btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
+    });
+
+    if (mirrorBtn) {
+      mirrorBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMirror();
+      });
+      mirrorBtn.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:true});
+    }
+
+    function toggleMirror(){
+      const isNowMirrored = video.classList.toggle('mirrored');
+      if (mirrorBtn) {
+        mirrorBtn.setAttribute('aria-pressed', isNowMirrored ? 'true' : 'false');
+        // 変更: .primary クラスは付けない（他ボタンに合わせる）
+      }
+    }
+
+    backBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
+
+      try {
+        video.removeEventListener('touchmove', preventTouchScroll);
+        videoWrap.removeEventListener('touchmove', preventTouchScroll);
+      } catch (err){}
+
+      viewer.style.display = 'none';
+      viewer.setAttribute('aria-hidden','true');
+      pickerScreen.style.display = 'flex';
+
+      fileInput.value = '';
+      fileNameEl.textContent = 'まだファイルが選択されていません';
+
+      markers = [];
+      clearMarkerElements();
+
+      // ミラー状態リセット（見た目を統一）
+      if (video.classList.contains('mirrored')) {
+        video.classList.remove('mirrored');
+        if (mirrorBtn) { mirrorBtn.setAttribute('aria-pressed','false'); }
+      }
+    });
+
+    video.addEventListener('timeupdate', () => {
+      if (!isSeeking && video.duration && isFinite(video.duration)) {
+        const pct = (video.currentTime / video.duration) * 100;
+        seekBar.value = pct;
+      }
+      updateToggleButton();
+    });
+
+    video.addEventListener('loadedmetadata', () => {
+      seekBar.value = 0;
+      updateToggleButton();
+      renderMarkers();
+    });
+
+    seekBar.addEventListener('input', (e) => { isSeeking = true; });
+    seekBar.addEventListener('change', (e) => {
+      const pct = Number(seekBar.value);
+      if (isFinite(video.duration) && video.duration > 0) {
+        video.currentTime = (pct / 100) * video.duration;
+      }
+      isSeeking = false;
+    });
+    seekBar.addEventListener('click', (e)=>e.stopPropagation());
+    seekBar.addEventListener('touchend', (e)=>e.stopPropagation(), {passive:true});
+
+    video.addEventListener('play', updateToggleButton);
+    video.addEventListener('pause', updateToggleButton);
+    video.addEventListener('ended', updateToggleButton);
+
+    function tryStartOnTap(e){
+      if (!(video.paused || video.ended)) return;
+      if ((topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target)) || (overlayRight && overlayRight.contains(e.target)) || (skipGroup && skipGroup.contains(e.target))) {
+        return;
+      }
+      video.play().catch(()=>{});
+      updateToggleButton();
+    }
+
+    viewer.addEventListener('click', tryStartOnTap);
+    viewer.addEventListener('touchend', tryStartOnTap, {passive:true});
+
+    pickBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') fileInput.click();
+    });
+
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('ページを再読み込みしますか？ 開いている動画や未保存の変更は失われます。')) {
+          location.reload();
+        }
+      });
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+    });
+
+    (async ()=>{ try{ await openDB(); await renderHistory(); }catch(e){ console.warn(e); } })();
+
+    function clearMarkerElements(){
+      while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
+    }
+
+    function renderMarkers(){
+      clearMarkerElements();
+      if (!markers || markers.length === 0) return;
+      const dur = (video && isFinite(video.duration)) ? video.duration : null;
+      if (!dur) return;
+
+      const seekRect = seekBar.getBoundingClientRect();
+      const layerRect = markerLayer.getBoundingClientRect();
+      if (seekRect.width <= 0) return;
+
+      const markerW = 2;
+      const markerH = 12;
+
+      markers.forEach((t, idx) => {
+        const el = document.createElement('div');
+        el.className = 'marker';
+        el.setAttribute('role','presentation');
+        el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
+
+        const frac = Math.max(0, Math.min(1, t / dur));
+        const leftOnSeekPx = frac * seekRect.width;
+        const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
+        const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
+
+        el.style.left = `${Math.round(leftPx)}px`;
+        el.style.top = `${Math.round(topPx)}px`;
+        markerLayer.appendChild(el);
+      });
+    }
+
+    markerAddBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!video || !isFinite(video.duration)) { return; }
+      const t = Number(video.currentTime || 0);
+      const EPS = 0.1;
+      const exist = markers.some(m => Math.abs(m - t) < EPS);
+      if (exist) {
+        return;
+      }
+      markers.push(t);
+      markers.sort((a,b)=>a-b);
+      renderMarkers();
+    });
+
+    function findPreviousMarkerIndex(referenceTime) {
+      if (!markers || markers.length === 0) return -1;
+      const EPS = 1e-6;
+      let idx = -1;
+      for (let i = 0; i < markers.length; i++){
+        if (markers[i] <= referenceTime - EPS) idx = i;
+        else break;
+      }
+      return idx;
+    }
+
+    markerJumpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) return;
+      video.currentTime = markers[idx];
+      const pct = (video.currentTime / video.duration) * 100;
+      seekBar.value = pct;
+    });
+
+    markerRemoveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) {
+        return;
+      }
+      markers.splice(idx, 1);
+      renderMarkers();
+    });
+
+    function repositionMarkerLayer(){
+      renderMarkers();
+    }
+
+    function formatTimeForLabel(sec){
+      if (!isFinite(sec)) return '0:00';
+      const s = Math.floor(sec % 60).toString().padStart(2,'0');
+      const m = Math.floor(sec / 60).toString();
+      return `${m}:${s}`;
+    }
+
+    video.addEventListener('loadeddata', () => { renderMarkers(); });
+    video.addEventListener('seeked', () => { renderMarkers(); });
+    window.addEventListener('resize', () => { renderMarkers(); });
+  </script>
+</body>
+</html>
