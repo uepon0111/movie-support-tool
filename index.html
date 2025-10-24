@@ -6,43 +6,41 @@
   <title>動画再生支援ツール</title>
 
   <!-- ====== Favicon / Icons (クロスプラットフォーム対応) ====== -->
-  <!-- Standard favicon files -->
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
   <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png" />
   <link rel="shortcut icon" href="favicon.ico" />
-
-  <!-- PWA / Android / Chrome: web app manifest -->
   <link rel="manifest" href="site.webmanifest" />
-
-  <!-- Apple touch icons (iPhone / iPad のホーム画面用) -->
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png" />
   <link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167.png" />
   <link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152.png" />
   <link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120.png" />
   <link rel="apple-touch-icon" sizes="76x76" href="apple-touch-icon-76.png" />
-
-  <!-- Safari pinned tab (SVG) -->
   <link rel="mask-icon" href="safari-pinned-tab.svg" color="#0b74ff" />
-
-  <!-- High-resolution icons often used for Android home screen / Chrome (例) -->
   <link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="favicon-512.png" />
-
-  <!-- Windows tile (mstile) -->
   <meta name="msapplication-TileColor" content="#0b74ff" />
   <meta name="msapplication-TileImage" content="mstile-150x150.png" />
-
-  <!-- iOS / Safari web app settings -->
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="動画再生支援ツール" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-
-  <!-- ブラウザのテーマカラー（Android Chrome 等で使用） -->
   <meta name="theme-color" content="#0b74ff" />
   <!-- ============================================================ -->
 
   <style>
+    /* ---------------------------
+       レスポンシブ制御（対象ボタン群のみ）
+       --ctrl-size を画面幅に応じて clamp() で決定
+       --------------------------- */
+    :root{
+      /* 最小 34px、推奨は viewport の比率、最大 72px */
+      --ctrl-size: clamp(34px, 5.5vw, 72px);
+      --ctrl-padding-x: calc(var(--ctrl-size) * 0.22);
+      --ctrl-padding-y: calc(var(--ctrl-size) * 0.16);
+      --ctrl-font: calc(var(--ctrl-size) * 0.28);
+      --ctrl-radius: calc(var(--ctrl-size) * 0.18);
+    }
+
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
     .center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;gap:16px}
     .btn{appearance:none;border:0;padding:10px 12px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;background:#fff}
@@ -208,7 +206,8 @@
     .overlay-right{
       position:absolute;
       right:12px;
-      top:48px;
+      /* 再生ボタンの高さ（--ctrl-size）を考慮して下にずらす（重ならないように） */
+      top: calc(8px + var(--ctrl-size) + 8px);
       display:flex;
       flex-direction:column;
       gap:8px;
@@ -226,13 +225,57 @@
     .marker-controls{display:flex;gap:6px;align-items:center}
     .marker-controls .marker-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer}
 
+    /* ======================================================
+       ここから：ボタン群のサイズだけをレスポンシブに変更
+       — レイアウト（配置）は変えない（position等はそのまま）
+       ====================================================== */
+    /* 適用対象:
+       - .top-btn (再生/停止, 戻るなど)
+       - .skip-btn (3s/5s のボタン)
+       - .marker-btn (マーカー操作 +, -, >)
+       - overlay-right 内の .btn (速度 +/-)
+    */
+    .top-btn,
+    .skip-btn,
+    .marker-btn,
+    .overlay-right .btn {
+      /* 高さ・最小幅をコントロールサイズに合わせる */
+      height: var(--ctrl-size);
+      min-width: var(--ctrl-size);
+      padding: 0 var(--ctrl-padding-x);
+      font-size: var(--ctrl-font);
+      border-radius: var(--ctrl-radius);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+    }
+
+    /* 文字サイズが大きくなりすぎる場合に備え、上下パディングを小さく調整 */
+    .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding-y)); }
+    .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
+    .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
+
+    /* 3s/5s ボタンのテキストが長い場合でもはみ出さないように */
+    .skip-row .skip-btn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    /* 小さい画面でもシークバーの親要素が潰れないように調整（既存の @media を上書きしない） */
     @media (max-width:480px){
-      .overlay-right{top:44px}
+      /* overlay-right の top も変数に基づいて調整（小さい画面で被るのを防ぐ） */
+      .overlay-right{ top: calc(8px + var(--ctrl-size) + 6px); }
       .seek::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px}
       .seek{height:6px}
       #topSeek{left:12px; right:12px}
-      .skip-row .skip-btn{padding:6px 8px;font-size:12px}
+      /* 既存の小画面設定をボタンの変数ベースに合わせる（上書き） */
+      .top-btn,
+      .skip-btn,
+      .marker-btn,
+      .overlay-right .btn {
+        /* そのまま変数に任せます */
+      }
     }
+    /* ====================================================== */
+
   </style>
 </head>
 <body>
@@ -783,11 +826,9 @@
       if (video.paused || video.ended) {
         playToggleBtn.textContent = '再生';
         playToggleBtn.setAttribute('aria-pressed','false');
-        // 変更: class の付け外しは行わない（見た目は aria-pressed で調整）
       } else {
         playToggleBtn.textContent = '停止';
         playToggleBtn.setAttribute('aria-pressed','true');
-        // 変更: class の付け外しは行わない
       }
     }
 
@@ -833,7 +874,6 @@
       const isNowMirrored = video.classList.toggle('mirrored');
       if (mirrorBtn) {
         mirrorBtn.setAttribute('aria-pressed', isNowMirrored ? 'true' : 'false');
-        // 変更: .primary クラスは付けない（他ボタンに合わせる）
       }
     }
 
