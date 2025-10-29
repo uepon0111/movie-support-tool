@@ -55,10 +55,28 @@
     }
 
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
-    .center{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;gap:16px}
+    /* NOTE: pick ボタン を段落の下に置くため padding-top を通常に戻す */
+    .center{
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:flex-start;
+      padding:24px; /* 変更: 固定トップ領域分の大きな余白を戻す */
+      box-sizing:border-box;
+      gap:16px;
+    }
     .btn{appearance:none;border:0;padding:10px 12px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;background:#fff}
     .primary{background:#0b74ff;color:white}
     .muted{background:#f0f0f0;color:#111}
+
+    /* 再読み込みボタンは右上に固定（ユーザー要望どおり） */
+    #reloadBtn {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 1100;
+    }
 
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111}
@@ -66,13 +84,13 @@
     #pickerScreen .file-info{color:#444}
 
     /* 履歴リスト（最小限のスタイル） */
-    .history-wrap{width:100%;max-width:720px;margin-top:8px}
+    .history-wrap{width:100%;max-width:880px;margin-top:0;/* fixed 化により余白不要 */margin-bottom:8px}
     .history-head{
       display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;
     }
     .history-left{display:flex;align-items:center;gap:8px}
     .history-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .history-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
+    .history-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 320px);overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
     /* ここは微修正：複数行タイトルに対応するため top 揃えにする */
     .history-item{display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;background:transparent}
     .history-item:hover{background:#f5f5f5}
@@ -306,17 +324,10 @@
        ここから：ボタン群のサイズだけをレスポンシブに変更
        — レイアウト（配置）は変えない（position等はそのまま）
        ====================================================== */
-    /* 適用対象:
-       - .top-btn (再生/停止, 戻るなど)
-       - .skip-btn (3s/5s のボタン)
-       - .marker-btn (マーカー操作 +, -, >)
-       - overlay-right 内の .btn (速度 +/-)
-    */
     .top-btn,
     .skip-btn,
     .marker-btn,
     .overlay-right .btn {
-      /* 高さ・最小幅をコントロールサイズに合わせる */
       height: var(--ctrl-size);
       min-width: var(--ctrl-size);
       padding: 0 var(--ctrl-padding-x);
@@ -328,32 +339,17 @@
       box-sizing:border-box;
     }
 
-    /* 文字サイズが大きくなりすぎる場合に備え、上下パディングを小さく調整 */
     .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding_y)); }
     .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
     .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
 
-    /* 3s/5s ボタンのテキストが長い場合でもはみ出さないように */
-    .skip-row .skip-btn { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
-    /* 小さい画面でもシークバーの親要素が潰れないように調整（既存の @media を上書きしない） */
     @media (max-width:480px){
-      /* overlay-right の top も変数に基づいて調整（小さい画面で被るのを防ぐ） */
       .overlay-right{ top: calc(8px + var(--ctrl-size) + 6px); }
       .seek::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px}
       .seek{height:6px}
       #topSeek{left:12px; right:12px}
-      /* 既存の小画面設定をボタンの変数ベースに合わせる（上書き） */
-      .top-btn,
-      .skip-btn,
-      .marker-btn,
-      .overlay-right .btn {
-        /* そのまま変数に任せます */
-      }
-      /* 履歴コントロールの要素は折り返して見やすくする */
       .history-controls{gap:6px}
     }
-    /* ====================================================== */
 
   </style>
 </head>
@@ -361,15 +357,15 @@
 
   <!-- ファイル取得画面 -->
   <main id="pickerScreen" class="center" aria-live="polite">
-    <div style="text-align:center">
+    <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
       <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、自動で動画画面に遷移します）。</p>
-    </div>
 
-    <div style="display:flex;gap:8px;align-items:center">
-      <label class="btn primary" id="pickBtn" for="fileInput" role="button">ファイルを取得</label>
-      <input id="fileInput" type="file" accept="video/*" style="display:none" />
-      <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
+      <!-- 要望に合わせてボタンを段落の直下に配置 -->
+      <div style="margin-top:8px">
+        <button id="pickBtn" class="btn primary" type="button" aria-label="ファイルを取得">ファイルを取得</button>
+        <input id="fileInput" type="file" accept="video/*" style="display:none" />
+      </div>
     </div>
 
     <div class="file-info" id="fileName" style="color:#444">まだファイルが選択されていません</div>
@@ -483,6 +479,8 @@
       </div>
     </div>
   </section>
+
+  <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
 
   <script>
     const fileInput = document.getElementById('fileInput');
@@ -896,40 +894,96 @@
       }
     }
 
+    // ヘルパー: 配列の等価比較（順序無視）
+    function arraysEqualAsSets(a,b){
+      if (!Array.isArray(a)) a = [];
+      if (!Array.isArray(b)) b = [];
+      if (a.length !== b.length) return false;
+      const sa = a.slice().sort();
+      const sb = b.slice().sort();
+      for (let i=0;i<sa.length;i++){ if (sa[i] !== sb[i]) return false; }
+      return true;
+    }
+
     // エントリのカテゴリを更新（newCategoryId: string | string[]）
+    // 改善: 同じ内容なら書き込みを行わないガード + 簡易リトライを導入
     async function updateEntryCategory(id, newCategoryId){
       const db = await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx = db.transaction(STORE_NAME,'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(Number(id));
-        req.onsuccess = ()=>{
-          const val = req.result;
+      const normalized = Array.isArray(newCategoryId) ? newCategoryId.slice() : (newCategoryId ? [newCategoryId] : []);
+      // normalize: remove ALL_ID and UNCATEGORIZED_ID from actual assigned list; UNCATEGORIZED == []
+      const filteredNorm = normalized.filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
+
+      // read current entry first to avoid unnecessary writes
+      try {
+        const txr = db.transaction(STORE_NAME, 'readonly');
+        const storer = txr.objectStore(STORE_NAME);
+        const cur = await new Promise((resolve, reject) => {
+          const rq = storer.get(Number(id));
+          rq.onsuccess = () => resolve(rq.result);
+          rq.onerror = () => reject(rq.error);
+        });
+        try { await waitForTransactionComplete(txr); } catch(e){}
+        const currentCids = Array.isArray(cur && cur.categoryIds) ? cur.categoryIds : (cur && cur.categoryId ? [cur.categoryId] : []);
+        if (arraysEqualAsSets(currentCids, filteredNorm)) {
+          // 既に同じ割当て -> no-op
+          return true;
+        }
+      } catch (e) {
+        // 読み込み失敗しても後続で書き込みを試みる
+        console.warn('updateEntryCategory: 現在値読み込み失敗、書き込みを試みます', e);
+      }
+
+      // try to write, with 3 attempts in case of transient tx error
+      let attempts = 0;
+      while (attempts < 3) {
+        attempts++;
+        try {
+          const tx = db.transaction(STORE_NAME,'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.get(Number(id));
+          const val = await new Promise((resolve, reject) => {
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+          });
           if (!val) {
-            waitForTransactionComplete(tx).then(()=>resolve(false)).catch(()=>resolve(false));
-            return;
+            try { await waitForTransactionComplete(tx); } catch(e){}
+            return false;
           }
-          if (Array.isArray(newCategoryId)){
-            const filtered = newCategoryId.filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
-            val.categoryIds = filtered;
-          } else {
-            if (!newCategoryId || newCategoryId === UNCATEGORIZED_ID){
-              val.categoryIds = [];
-            } else if (newCategoryId === ALL_ID){
-              val.categoryIds = [];
-            } else {
-              val.categoryIds = [newCategoryId];
-            }
-          }
+          val.categoryIds = filteredNorm.slice(); // assign array (空配列 = 未分類)
           if (val.hasOwnProperty('categoryId')) delete val.categoryId;
-          const put = store.put(val);
-          put.onsuccess = ()=> {
-            waitForTransactionComplete(tx).then(()=>resolve(true)).catch(reject);
-          };
-          put.onerror = ()=>reject(put.error);
-        };
-        req.onerror = ()=>reject(req.error);
-      });
+          const putReq = store.put(val);
+          await promisifyRequest(putReq);
+          await waitForTransactionComplete(tx);
+          return true;
+        } catch (err) {
+          console.warn('updateEntryCategory attempt', attempts, 'failed', err);
+          // transient errors: retry after small delay
+          if (attempts < 3) {
+            await new Promise(r => setTimeout(r, 80 + Math.random()*50));
+            continue;
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+
+    // シンプルなキュー: 同一エントリに対する更新を直列化する（項目移動の競合防止）
+    const updateQueue = new Map();
+    function enqueueUpdateEntryCategory(id, newCategoryArr){
+      const key = String(id);
+      const doUpdate = () => updateEntryCategory(id, newCategoryArr);
+      if (updateQueue.has(key)) {
+        // chain after existing promise
+        const p = updateQueue.get(key).then(() => doUpdate());
+        // store chained promise and ensure cleanup
+        updateQueue.set(key, p.then(()=>{ updateQueue.delete(key); return; }).catch((e)=>{ updateQueue.delete(key); throw e; }));
+        return p;
+      } else {
+        const p = doUpdate();
+        updateQueue.set(key, p.then(()=>{ updateQueue.delete(key); return; }).catch((e)=>{ updateQueue.delete(key); throw e; }));
+        return p;
+      }
     }
 
     function formatBytes(n){ if (n<1024) return n + ' B'; if (n<1024*1024) return Math.round(n/1024) + ' KB'; return (n/(1024*1024)).toFixed(2) + ' MB'; }
@@ -1033,8 +1087,6 @@
       modalBackdrop.style.display = 'none';
       modalBackdrop.setAttribute('aria-hidden','true');
     }
-
-    // サムネイル機能を削除しました（省略）
 
     async function renderHistory(){
       historyList.innerHTML = '';
@@ -1188,14 +1240,48 @@
           }
         });
 
-        applyBtn.addEventListener('click', (e)=>{
+        applyBtn.addEventListener('click', async (e)=>{
           e.stopPropagation();
+          // disable UI to prevent double submissions
+          applyBtn.disabled = true;
+          cancelBtn.disabled = true;
+          moveSelect.disabled = true;
+
           const opts = Array.from(moveSelect.selectedOptions).map(o=>o.value);
+          // filtered: drop '未分類' sentinel from explicit assignments; UNCATEGORIZED -> []
           const filtered = opts.filter(v => v && v !== UNCATEGORIZED_ID);
           const newCatArr = filtered.length === 0 ? [] : filtered;
-          updateEntryCategory(it.id, newCatArr).then(()=>{
+
+          try {
+            // guard: read current entry and skip if same set (to avoid redundant writes & transient errors)
+            const current = await getEntry(it.id);
+            const existing = Array.isArray(current.categoryIds) ? current.categoryIds : (current.categoryId ? [current.categoryId] : []);
+            if (arraysEqualAsSets(existing, newCatArr)) {
+              // nothing to do
+              applyBtn.style.display = 'none';
+              cancelBtn.style.display = 'none';
+              return;
+            }
+          } catch (err) {
+            console.warn('applyBtn guard: 現在値取得でエラー', err);
+            // 続行して更新を試みる
+          }
+
+          // use queue to serialize updates per entry to avoid race conditions
+          enqueueUpdateEntryCategory(it.id, newCatArr).then(()=>{
+            // re-enable and refresh
+            applyBtn.disabled = false;
+            cancelBtn.disabled = false;
+            moveSelect.disabled = false;
             renderHistory();
-          }).catch(err => { console.warn('カテゴリ更新失敗', err); alert('項目の移動に失敗しました'); renderHistory(); });
+          }).catch(err => {
+            console.warn('カテゴリ更新失敗', err);
+            alert('項目の移動に失敗しました');
+            applyBtn.disabled = false;
+            cancelBtn.disabled = false;
+            moveSelect.disabled = false;
+            renderHistory();
+          });
         });
 
         cancelBtn.addEventListener('click', (e)=>{
@@ -1442,6 +1528,9 @@
       setTimeout(adjustTopSeek, 60);
       setTimeout(adjustTopSeek, 300);
     }
+
+    // pickBtn: 既存の <input> を開く
+    pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
 
     fileInput.addEventListener('change', async () => {
       const f = fileInput.files && fileInput.files[0];
