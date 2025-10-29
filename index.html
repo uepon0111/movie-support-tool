@@ -76,6 +76,17 @@
       top: 12px;
       right: 12px;
       z-index: 1100;
+
+      /* 追加: 再読み込みボタンもレスポンシブに（既存のコントロールサイズに合わせる） */
+      height: var(--ctrl-size);
+      min-width: var(--ctrl-size);
+      padding: 0 var(--ctrl-padding-x);
+      font-size: var(--ctrl-font);
+      border-radius: var(--ctrl-radius);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
     }
 
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
@@ -395,9 +406,10 @@
             <!-- 項目編集（モーダルを開く） -->
             <button id="editCategoryBtn" class="small-btn" title="項目の名前・色を編集">項目編集</button>
 
-            <!-- 新規項目 / 項目削除 -->
-            <button id="createCategoryBtn" class="small-btn" title="新しい項目を作成">新規項目</button>
-            <button id="deleteCategoryBtn" class="small-btn" title="選択中の項目を削除">項目削除</button>
+            <!--
+              ※ ユーザー要望：モーダル内で追加/削除を行うため、
+                 外側の「新規項目」「項目削除」ボタンは削除しました。
+            -->
           </div>
         </div>
 
@@ -418,6 +430,8 @@
         <!-- JS がここにカテゴリ行を描画します -->
       </div>
       <div class="modal-actions">
+        <!-- 新設: モーダル内で項目を追加できるボタン -->
+        <button id="addCategoryInModal" class="small-btn" title="新しい項目を追加">追加</button>
         <button id="closeCategoryEditor" class="small-btn">閉じる</button>
       </div>
     </div>
@@ -526,10 +540,8 @@
     const markerLayer = document.getElementById('markerLayer');
 
     const categorySelect = document.getElementById('categorySelect');
-    const createCategoryBtn = document.getElementById('createCategoryBtn');
-    const deleteCategoryBtn = document.getElementById('deleteCategoryBtn');
     const editCategoryBtn = document.getElementById('editCategoryBtn');
-
+    const addCategoryInModal = document.getElementById('addCategoryInModal');
     const modalBackdrop = document.getElementById('modalBackdrop');
     const categoryEditorContent = document.getElementById('categoryEditorContent');
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
@@ -544,6 +556,9 @@
     let isSeeking = false;
 
     let markers = [];
+
+    // モーダル用の一時カテゴリ配列（編集中に並び替え・追加・削除を行うため）
+    let modalUsers = null;
 
     const SORT_KEY = 'videoHistorySort';
     function loadSortSettings(){
@@ -1011,74 +1026,83 @@
 
     // カテゴリ編集モーダルの描画（並び替えボタンを追加）
     function openCategoryEditor(){
+      // modalUsers をローカルに用意して編集用に使う（保存は閉じる時に一括）
+      modalUsers = loadUserCategories().slice(); // copy
       categoryEditorContent.innerHTML = '';
-      const users = loadUserCategories();
-      if (users.length === 0) {
-        const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
-        categoryEditorContent.appendChild(p);
-      } else {
-        users.forEach((c, idx)=>{
-          const row = document.createElement('div'); row.className = 'cat-row';
-          const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
-          const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
-          const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name;
-          const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
-          const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
-          const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
-          row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(saveBtn); row.appendChild(delBtn);
-          categoryEditorContent.appendChild(row);
 
-          // disable up/down where appropriate
-          if (idx === 0) upBtn.disabled = true;
-          if (idx === users.length - 1) downBtn.disabled = true;
+      function renderRows(){
+        categoryEditorContent.innerHTML = '';
+        if (modalUsers.length === 0) {
+          const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
+          categoryEditorContent.appendChild(p);
+        } else {
+          modalUsers.forEach((c, idx)=>{
+            const row = document.createElement('div'); row.className = 'cat-row';
+            // store id for later bulk-save on close
+            row.dataset.catId = c.id;
 
-          upBtn.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            moveCategoryUp(c.id);
-            // re-render modal and select list
-            openCategoryEditor();
-            populateCategorySelect();
-            renderHistory();
-          });
-          downBtn.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            moveCategoryDown(c.id);
-            openCategoryEditor();
-            populateCategorySelect();
-            renderHistory();
-          });
+            const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
+            const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
+            const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name || '';
+            const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
+            const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
+            row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
+            categoryEditorContent.appendChild(row);
 
-          saveBtn.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            const newName = nameIn.value.trim() || c.name;
-            let newColor = colorIn.value || '#ffffff';
-            if (!newColor.startsWith('#')) newColor = '#' + newColor;
-            if (!isValidHexColor(newColor)) newColor = '#ffffff';
-            // update stored categories
-            const all = loadUserCategories();
-            const idx2 = all.findIndex(x=>x.id===c.id);
-            if (idx2 !== -1){
-              all[idx2].name = newName;
-              all[idx2].color = expandHex(newColor);
-              saveUserCategories(all);
-              populateCategorySelect();
-              renderHistory();
-              alert('保存しました');
-              openCategoryEditor(); // re-render to reflect possible button state changes
-            } else {
-              alert('項目が見つかりませんでした');
-            }
-          });
+            // disable up/down where appropriate
+            if (idx === 0) upBtn.disabled = true;
+            if (idx === modalUsers.length - 1) downBtn.disabled = true;
 
-          delBtn.addEventListener('click', (e)=>{
-            e.stopPropagation();
-            if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
-            deleteCategory(c.id);
-            // refresh modal
-            openCategoryEditor();
+            upBtn.addEventListener('click', (e)=>{
+              e.stopPropagation();
+              if (idx > 0){
+                const tmp = modalUsers[idx-1];
+                modalUsers[idx-1] = modalUsers[idx];
+                modalUsers[idx] = tmp;
+                renderRows();
+              }
+            });
+            downBtn.addEventListener('click', (e)=>{
+              e.stopPropagation();
+              if (idx < modalUsers.length - 1){
+                const tmp = modalUsers[idx+1];
+                modalUsers[idx+1] = modalUsers[idx];
+                modalUsers[idx] = tmp;
+                renderRows();
+              }
+            });
+
+            delBtn.addEventListener('click', (e)=>{
+              e.stopPropagation();
+              if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
+              // call deleteCategory to handle DB reassignment and saved list
+              deleteCategory(c.id);
+              // also remove from modalUsers if present
+              const i = modalUsers.findIndex(x => x.id === c.id);
+              if (i >= 0) modalUsers.splice(i, 1);
+              renderRows();
+            });
+
+            // live-edit name/color locally so that closing will pick up changes
+            nameIn.addEventListener('input', (ev)=>{
+              const i = modalUsers.findIndex(x => x.id === c.id);
+              if (i >= 0) modalUsers[i].name = nameIn.value;
+            });
+            colorIn.addEventListener('input', (ev)=>{
+              const i = modalUsers.findIndex(x => x.id === c.id);
+              let v = colorIn.value || '#ffffff';
+              if (!v.startsWith('#')) v = '#' + v;
+              v = v.toLowerCase();
+              if (!isValidHexColor(v)) v = '#ffffff';
+              v = expandHex(v);
+              if (i >= 0) modalUsers[i].color = v;
+            });
           });
-        });
+        }
       }
+
+      renderRows();
+
       modalBackdrop.style.display = 'flex';
       modalBackdrop.setAttribute('aria-hidden','false');
     }
@@ -1404,24 +1428,7 @@
       renderHistory();
     });
 
-    // カテゴリボタンの挙動
-    createCategoryBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const name = prompt('新しい項目名を入力してください');
-      if (!name) return;
-      createCategory(name.trim());
-      populateCategorySelect();
-      renderHistory();
-    });
-    deleteCategoryBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const sel = categorySelect.value;
-      if (!sel || sel === ALL_ID || sel === UNCATEGORIZED_ID) {
-        alert('「全て」や「未分類」は削除できません。削除できるのはユーザー作成の項目です。');
-        return;
-      }
-      deleteCategory(sel);
-    });
+    // カテゴリ選択の変更で再描画
     categorySelect.addEventListener('change', ()=>{
       renderHistory();
     });
@@ -1431,10 +1438,134 @@
       e.stopPropagation();
       openCategoryEditor();
     });
+
+    // モーダル内の「追加」ボタン（新しい行を modalUsers に追加して再描画）
+    addCategoryInModal.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if (!modalUsers) modalUsers = loadUserCategories().slice();
+      const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      const name = '新しい項目';
+      modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
+      // re-render modal
+      // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
+      // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
+      // quick re-render:
+      (function renderModalRows(){
+        categoryEditorContent.innerHTML = '';
+        if (!modalUsers || modalUsers.length === 0){
+          const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
+          categoryEditorContent.appendChild(p);
+          return;
+        }
+        modalUsers.forEach((c, idx)=>{
+          const row = document.createElement('div'); row.className = 'cat-row';
+          row.dataset.catId = c.id;
+          const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
+          const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
+          const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name || '';
+          const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
+          const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
+          row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
+          categoryEditorContent.appendChild(row);
+
+          if (idx === 0) upBtn.disabled = true;
+          if (idx === modalUsers.length - 1) downBtn.disabled = true;
+
+          upBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (idx > 0){
+              const tmp = modalUsers[idx-1];
+              modalUsers[idx-1] = modalUsers[idx];
+              modalUsers[idx] = tmp;
+              renderModalRows();
+            }
+          });
+          downBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (idx < modalUsers.length - 1){
+              const tmp = modalUsers[idx+1];
+              modalUsers[idx+1] = modalUsers[idx];
+              modalUsers[idx] = tmp;
+              renderModalRows();
+            }
+          });
+          delBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
+            deleteCategory(c.id);
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            if (i >= 0) modalUsers.splice(i,1);
+            renderModalRows();
+          });
+          nameIn.addEventListener('input', (ev)=>{
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            if (i >= 0) modalUsers[i].name = nameIn.value;
+          });
+          colorIn.addEventListener('input', (ev)=>{
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            let v = colorIn.value || '#ffffff';
+            if (!v.startsWith('#')) v = '#' + v;
+            v = v.toLowerCase();
+            if (!isValidHexColor(v)) v = '#ffffff';
+            v = expandHex(v);
+            if (i >= 0) modalUsers[i].color = v;
+          });
+        });
+      })();
+    });
+
+    // 閉じるボタン：モーダル内の変更をまとめて保存して閉じる（自動保存）
     closeCategoryEditor.addEventListener('click', (e)=>{
       e.stopPropagation();
+      try {
+        if (Array.isArray(modalUsers)) {
+          // 保存: modalUsers をそのまま保存（順序も反映）
+          saveUserCategories(modalUsers);
+        } else {
+          // fallback: try to collect from DOM rows (旧ロジック互換)
+          const rows = Array.from(categoryEditorContent.querySelectorAll('.cat-row'));
+          if (rows.length > 0) {
+            const users = loadUserCategories();
+            const mapById = {};
+            for (const u of users) mapById[u.id] = u;
+
+            let changed = false;
+            const newUsers = [];
+            for (const row of rows) {
+              const id = row.dataset.catId || ('cat_' + Date.now() + '_' + Math.floor(Math.random()*1000));
+              const nameInput = row.querySelector('input[type="text"]');
+              const colorInput = row.querySelector('input[type="color"]');
+              const newName = nameInput ? (nameInput.value.trim() || mapById[id]?.name || '') : (mapById[id]?.name || '');
+              let newColor = colorInput ? (colorInput.value || '#ffffff') : (mapById[id]?.color || '#ffffff');
+              if (!newColor.startsWith('#')) newColor = '#' + newColor;
+              newColor = newColor.toLowerCase();
+              if (!isValidHexColor(newColor)) newColor = '#ffffff';
+              newColor = expandHex(newColor);
+
+              if (mapById[id]) {
+                if (mapById[id].name !== newName || (mapById[id].color || '') !== newColor) {
+                  mapById[id].name = newName;
+                  mapById[id].color = newColor;
+                  changed = true;
+                }
+                newUsers.push(mapById[id]);
+              } else {
+                newUsers.push({ id, name: newName, color: newColor, createdAt: Date.now() });
+                changed = true;
+              }
+            }
+            saveUserCategories(newUsers);
+          }
+        }
+      } catch (err) {
+        console.warn('カテゴリ保存中にエラー', err);
+      }
+      // refresh UI and close modal
+      populateCategorySelect();
+      renderHistory();
       closeCategoryEditorModal();
     });
+
     modalBackdrop.addEventListener('click', (e)=>{
       if (e.target === modalBackdrop) closeCategoryEditorModal();
     });
@@ -1505,6 +1636,9 @@
       pickerScreen.style.display = 'none';
       viewer.style.display = 'block';
       viewer.setAttribute('aria-hidden','false');
+
+      // hide reload button on viewer screen
+      if (reloadBtn) reloadBtn.style.display = 'none';
 
       video.controls = false;
 
@@ -1680,6 +1814,9 @@
         video.classList.remove('mirrored');
         if (mirrorBtn) { mirrorBtn.setAttribute('aria-pressed','false'); }
       }
+
+      // show reload button again when returning to picker screen
+      if (reloadBtn) reloadBtn.style.display = '';
     });
 
     video.addEventListener('timeupdate', () => {
