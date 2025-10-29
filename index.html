@@ -39,6 +39,13 @@
       --ctrl-padding-y: calc(var(--ctrl-size) * 0.16);
       --ctrl-font: calc(var(--ctrl-size) * 0.28);
       --ctrl-radius: calc(var(--ctrl-size) * 0.18);
+
+      /* 履歴内の小さめボタンはコントロールサイズを少し縮小して使う */
+      --hist-scale: 0.78;
+      --hist-size: calc(var(--ctrl-size) * var(--hist-scale));
+      --hist-padding-x: calc(var(--hist-size) * 0.18);
+      --hist-font: calc(var(--hist-size) * 0.28);
+      --hist-radius: calc(var(--hist-size) * 0.16);
     }
 
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
@@ -58,16 +65,48 @@
     .history-left{display:flex;align-items:center;gap:8px}
     .history-controls{display:flex;align-items:center;gap:8px}
     .history-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
-    .history-item{display:flex;align-items:center;gap:8px;padding:6px;border-radius:6px;background:transparent}
+    /* ここは微修正：複数行タイトルに対応するため top 揃えにする */
+    .history-item{display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;background:transparent}
     .history-item:hover{background:#f5f5f5}
     .thumb{width:96px;height:54px;background:#ddd;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}
     .thumb img{width:100%;height:100%;object-fit:cover}
     .meta{flex:1;min-width:0}
-    .meta .name{font-size:14px;color:#111;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    /* ここを変更：タイトルを折り返して全文表示する */
+    .meta .name{font-size:14px;color:#111;white-space:normal;overflow-wrap:break-word;word-break:break-word;overflow:visible;text-overflow:unset}
     .meta .sub{font-size:12px;color:#666;margin-top:2px}
-    .history-actions{display:flex;gap:6px}
-    .small-btn{padding:6px 8px;border-radius:8px;font-size:13px}
-    .name-input{width:100%;font-size:14px;padding:6px;border-radius:6px;border:1px solid #ddd}
+    /* 新規：補足表示 */
+    .meta .note{font-size:12px;color:#444;margin-top:6px;white-space:pre-wrap}
+    /* 履歴内アクションをグリッドにして2列表示（開く/削除 の1行目、名前編集/補足編集 の2行目） */
+    .history-actions{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, auto));
+      gap:6px;
+      align-content:start;
+      justify-items:start;
+      margin-left:8px;
+      /* 最小幅を確保して余白が潰れにくく */
+      min-width: calc(var(--hist-size) * 2.6);
+    }
+    /* 小さいボタン（履歴用）をレスポンシブに */
+    .small-btn{
+      appearance:none;
+      border:0;
+      cursor:pointer;
+      background:#fff;
+      box-shadow:0 1px 3px rgba(0,0,0,0.12);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      height: var(--hist-size);
+      min-width: calc(var(--hist-size) * 1.2);
+      padding: 0 var(--hist-padding-x);
+      font-size: var(--hist-font);
+      border-radius: var(--hist-radius);
+      color:#111;
+    }
+    /* 名前入力・補足テキストエリアも高さを変える */
+    .name-input{width:100%;font-size:calc(var(--hist-font) * 0.95);padding:6px;border-radius:6px;border:1px solid #ddd}
+    .note-input{width:100%;font-size:calc(var(--hist-font) * 0.9);padding:6px;border-radius:6px;border:1px solid #ddd;min-height:56px;box-sizing:border-box}
     .edit-controls{display:flex;gap:6px;margin-left:6px}
     select.sort-select{padding:6px;border-radius:6px;border:1px solid #ddd;background:#fff}
 
@@ -252,7 +291,7 @@
     }
 
     /* 文字サイズが大きくなりすぎる場合に備え、上下パディングを小さく調整 */
-    .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding-y)); }
+    .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding_y)); }
     .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
     .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
 
@@ -457,8 +496,12 @@
           const db = e.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)){
             const store = db.createObjectStore(STORE_NAME, {keyPath:'id', autoIncrement:true});
-            store.createIndex('byLastModified', ['name','size','lastModified'], {unique:false});
-            store.createIndex('byCreated', 'createdAt');
+            // keep simple indexes to avoid edge issues
+            try {
+              store.createIndex('byCreated', 'createdAt');
+            } catch (e) {
+              // ignore if index creation fails on older browsers
+            }
           }
         };
         req.onsuccess = () => resolve(req.result);
@@ -467,32 +510,24 @@
       return dbPromise;
     }
 
-    async function saveFileToHistory(file){
-      try{
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-
-        const all = await getAllFromStore(store);
-        const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
-        if (match) {
-          match.createdAt = Date.now();
-          store.put(match);
-          await tx.complete;
-          trimHistoryLimit(db);
-          return match.id;
-        }
-
-        const entry = { name: file.name, size: file.size, type: file.type, lastModified: file.lastModified || 0, blob: file.slice(0, file.size, file.type), createdAt: Date.now() };
-        const addReq = store.add(entry);
-        const id = await new Promise((res, rej) => { addReq.onsuccess = () => res(addReq.result); addReq.onerror = () => rej(addReq.error); });
-        await tx.complete;
-        trimHistoryLimit(db);
-        return id;
-      }catch(err){ console.warn('保存に失敗しました', err); }
+    // IndexedDB のリクエストを Promise 化
+    function promisifyRequest(req){
+      return new Promise((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
     }
 
-    function getAllFromStore(store){
+    // トランザクション完了を待つ（oncomplete / onerror / onabort を監視）
+    function waitForTransactionComplete(tx){
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(new Error('Transaction aborted'));
+        tx.onerror = () => reject(tx.error || new Error('Transaction error'));
+      });
+    }
+
+    async function getAllFromStore(store){
       return new Promise((resolve, reject) => {
         const req = store.getAll();
         req.onsuccess = () => resolve(req.result);
@@ -505,6 +540,8 @@
       const tx = db.transaction(STORE_NAME, 'readonly');
       const store = tx.objectStore(STORE_NAME);
       const all = await getAllFromStore(store);
+      // wait transaction complete for best practice (readonly usually completes quickly)
+      try { await waitForTransactionComplete(tx); } catch (e){ /* ignore */ }
       return all;
     }
 
@@ -514,7 +551,9 @@
         const tx = db.transaction(STORE_NAME,'readonly');
         const store = tx.objectStore(STORE_NAME);
         const req = store.get(Number(id));
-        req.onsuccess = ()=>resolve(req.result);
+        req.onsuccess = ()=> {
+          resolve(req.result);
+        };
         req.onerror = ()=>reject(req.error);
       });
     }
@@ -525,7 +564,10 @@
         const tx = db.transaction(STORE_NAME,'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const req = store.delete(Number(id));
-        req.onsuccess = ()=>resolve();
+        req.onsuccess = ()=> {
+          // wait for tx complete for robustness
+          waitForTransactionComplete(tx).then(resolve).catch(reject);
+        };
         req.onerror = ()=>reject(req.error);
       });
     }
@@ -536,7 +578,9 @@
         const tx = db.transaction(STORE_NAME,'readwrite');
         const store = tx.objectStore(STORE_NAME);
         const req = store.clear();
-        req.onsuccess = ()=>resolve();
+        req.onsuccess = ()=> {
+          waitForTransactionComplete(tx).then(resolve).catch(reject);
+        };
         req.onerror = ()=>reject(req.error);
       });
     }
@@ -547,9 +591,13 @@
         const store = tx.objectStore(STORE_NAME);
         const all = await getAllFromStore(store);
         const sorted = all.sort((a,b)=>b.createdAt - a.createdAt);
-        if (sorted.length <= MAX_HISTORY) return;
+        if (sorted.length <= MAX_HISTORY) {
+          try { await waitForTransactionComplete(tx); } catch(e){}
+          return;
+        }
         const toRemove = sorted.slice(MAX_HISTORY);
         for (const item of toRemove) store.delete(item.id);
+        await waitForTransactionComplete(tx);
       }catch(e){console.warn(e)}
     }
 
@@ -561,10 +609,39 @@
         const req = store.get(Number(id));
         req.onsuccess = ()=>{
           const val = req.result;
-          if (!val) return resolve(false);
+          if (!val) {
+            waitForTransactionComplete(tx).then(()=>resolve(false)).catch(()=>resolve(false));
+            return;
+          }
           val.name = newName;
           const put = store.put(val);
-          put.onsuccess = ()=>resolve(true);
+          put.onsuccess = ()=> {
+            waitForTransactionComplete(tx).then(()=>resolve(true)).catch(reject);
+          };
+          put.onerror = ()=>reject(put.error);
+        };
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    // 新規: 補足（note）更新関数
+    async function updateEntryNote(id, newNote){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(Number(id));
+        req.onsuccess = ()=>{
+          const val = req.result;
+          if (!val) {
+            waitForTransactionComplete(tx).then(()=>resolve(false)).catch(()=>resolve(false));
+            return;
+          }
+          val.note = newNote;
+          const put = store.put(val);
+          put.onsuccess = ()=> {
+            waitForTransactionComplete(tx).then(()=>resolve(true)).catch(reject);
+          };
           put.onerror = ()=>reject(put.error);
         };
         req.onerror = ()=>reject(req.error);
@@ -585,6 +662,201 @@
       return copy;
     }
 
+    // プレースホルダーSVG（サムネイル生成失敗時用）
+    const PLACEHOLDER_THUMBNAIL = (function(){
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='100%' height='100%' fill='#ddd'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#777' font-family='sans-serif' font-size='14'>プレビューなし</text></svg>`;
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    })();
+
+    // 動画ブロブからサムネイル生成（堅牢化: タイムアウト・エラーハンドリング）
+    function generateThumbnailFromBlob(blob, seekTo = 0.1, maxWidth = 320){
+      return new Promise((resolve) => {
+        if (!blob || typeof blob.size !== 'number') { resolve(PLACEHOLDER_THUMBNAIL); return; }
+
+        const url = URL.createObjectURL(blob);
+        const v = document.createElement('video');
+        let resolved = false;
+        const cleanup = () => {
+          try { v.pause(); v.removeAttribute('src'); } catch(e){}
+          try { URL.revokeObjectURL(url); } catch(e){}
+        };
+
+        const timeoutId = setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            resolve(PLACEHOLDER_THUMBNAIL);
+          }
+        }, 2500);
+
+        v.preload = 'metadata';
+        v.muted = true;
+        v.playsInline = true;
+        v.src = url;
+        v.crossOrigin = 'anonymous';
+
+        function doCapture() {
+          try {
+            const vw = v.videoWidth || 16;
+            const vh = v.videoHeight || 9;
+            if (vw === 0 || vh === 0) {
+              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
+              return;
+            }
+            const ratio = vw / vh;
+            const width = Math.min(maxWidth, vw);
+            const height = Math.round(width / ratio);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0,0,width,height);
+            try {
+              ctx.drawImage(v, 0, 0, width, height);
+              const data = canvas.toDataURL('image/jpeg', 0.8);
+              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(data); }
+            } catch (err) {
+              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
+            }
+          } catch (e) {
+            if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
+          }
+        }
+
+        v.addEventListener('loadeddata', () => {
+          try {
+            const dur = isFinite(v.duration) ? v.duration : 0;
+            const target = (dur > seekTo) ? seekTo : 0;
+            if (dur > 0 && target > 0) {
+              const onSeeked = function() {
+                v.removeEventListener('seeked', onSeeked);
+                setTimeout(doCapture, 60);
+              };
+              v.addEventListener('seeked', onSeeked);
+              try { v.currentTime = target; } catch (e) {
+                setTimeout(doCapture, 60);
+              }
+            } else {
+              setTimeout(doCapture, 60);
+            }
+          } catch (e) {
+            if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
+          }
+        }, {once:true});
+
+        v.addEventListener('error', () => {
+          if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
+        }, {once:true});
+      });
+    }
+
+    /**
+     * 保存処理の改善点:
+     * - 読み取り（既存チェック）を readonly トランザクションで行い、
+     *   新規追加は readwrite トランザクションで行う（混在による競合を避ける）。
+     * - トランザクション完了を待ってから処理を返す。
+     * - QuotaExceededError 等で保存に失敗した場合は最小情報（blob: null）で再試行する。
+     */
+    async function saveFileToHistory(file){
+      try{
+        const db = await openDB();
+
+        // --- 既存チェック（readonly） ---
+        try {
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+          if (match) {
+            // 更新 (createdAt) は readwrite で行う
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            match.createdAt = Date.now();
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            // トリムはバックグラウンドで行う（await しても良い）
+            trimHistoryLimit(db).catch(()=>{});
+            return match.id;
+          }
+        } catch (e) {
+          // 既存チェック失敗しても保存自体を試みる（ログだけ）
+          console.warn('既存チェックに失敗しました（続行します）', e);
+        }
+
+        // --- 新規追加（readwrite） ---
+        const entry = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified || 0,
+          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
+          createdAt: Date.now(),
+          note: '' // 新規: 補足フィールドを追加（空文字で初期化）
+        };
+
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const addReq = store.add(entry);
+          const id = await promisifyRequest(addReq);
+          await waitForTransactionComplete(tx);
+          // trim を同期的に実行（非致命的）
+          await trimHistoryLimit(db);
+          return id;
+        } catch (err) {
+          console.warn('最初の追加でエラー', err);
+          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
+          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
+            try {
+              // 古いものをいくつか削除して再挑戦
+              const txr2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = txr2.objectStore(STORE_NAME);
+              const all = await getAllFromStore(store2);
+              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
+              // 古いものを 3 件まで削除
+              const remove = sorted.slice(0, Math.min(3, sorted.length));
+              for (const it of remove) store2.delete(it.id);
+              await waitForTransactionComplete(txr2);
+            } catch (cleanupErr) {
+              console.warn('クリーンアップ中にエラー', cleanupErr);
+            }
+            // blob を null にして保存（容量を節約）
+            try {
+              const tx2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = tx2.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq2 = store2.add(entrySmall);
+              const id2 = await promisifyRequest(addReq2);
+              await waitForTransactionComplete(tx2);
+              await trimHistoryLimit(db);
+              return id2;
+            } catch (finalErr) {
+              console.warn('最終的な追加にも失敗しました', finalErr);
+              return null;
+            }
+          } else {
+            // その他のエラー: 可能なら blob を外して保存
+            try {
+              const tx3 = db.transaction(STORE_NAME, 'readwrite');
+              const store3 = tx3.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq3 = store3.add(entrySmall);
+              const id3 = await promisifyRequest(addReq3);
+              await waitForTransactionComplete(tx3);
+              await trimHistoryLimit(db);
+              return id3;
+            } catch (err2) {
+              console.warn('blob を外しても保存失敗', err2);
+              return null;
+            }
+          }
+        }
+      }catch(err){ console.warn('保存に失敗しました', err); return null; }
+    }
+
     async function renderHistory(){
       historyList.innerHTML = '';
       const items = await getHistory();
@@ -592,17 +864,29 @@
 
       if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
 
+      // 並列にサムネイル作っても良いが、メモリ対策で逐次処理（必要に応じて変更可）
       for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
 
         const thumb = document.createElement('div'); thumb.className='thumb';
         const img = document.createElement('img');
+        img.alt = it.name + ' のサムネイル';
+        img.loading = 'lazy';
+
         try{
-          const url = URL.createObjectURL(it.blob);
-          img.src = url;
-          img.onload = ()=>{ URL.revokeObjectURL(url); };
-        }catch(e){ /* ignore */ }
+          if (it.blob && typeof it.blob.size === 'number') {
+            // blob がある場合はサムネイル生成を試みる
+            const thumbData = await generateThumbnailFromBlob(it.blob, 0.1, 320);
+            img.src = thumbData || PLACEHOLDER_THUMBNAIL;
+          } else {
+            // blob が無い（容量節約で保存されている）場合はプレースホルダー
+            img.src = PLACEHOLDER_THUMBNAIL;
+          }
+        }catch(e){
+          img.src = PLACEHOLDER_THUMBNAIL;
+        }
+
         thumb.appendChild(img);
 
         const meta = document.createElement('div'); meta.className='meta';
@@ -614,10 +898,16 @@
         const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
 
+        // 新規: 補足（note）表示（存在しない場合は空表示）
+        const noteDiv = document.createElement('div'); noteDiv.className = 'note';
+        noteDiv.textContent = it.note || '';
+        meta.appendChild(noteDiv);
+
         const actions = document.createElement('div'); actions.className='history-actions';
         const openBtn = document.createElement('button'); openBtn.className='small-btn'; openBtn.textContent='開く';
         const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
+        const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
 
         openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
         delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
@@ -651,7 +941,51 @@
           });
         });
 
-        actions.appendChild(openBtn); actions.appendChild(editBtn); actions.appendChild(delBtn);
+        // 補足編集ボタンの挙動（新規追加）
+        editNoteBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          // noteDiv を編集領域に置換
+          const originalNote = it.note || '';
+          // 保持されている nameWrap はそのまま表示（名前編集と排他になるが簡潔に）
+          const noteEditWrap = document.createElement('div');
+          const ta = document.createElement('textarea');
+          ta.className = 'note-input';
+          ta.value = originalNote;
+          ta.setAttribute('aria-label', '補足編集');
+          const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
+          const cancelBtn = document.createElement('button'); cancelBtn.className='small-btn'; cancelBtn.textContent='キャンセル';
+          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn);
+
+          noteEditWrap.appendChild(ta);
+          noteEditWrap.appendChild(editControls);
+
+          // replace noteDiv content
+          noteDiv.innerHTML = '';
+          noteDiv.appendChild(noteEditWrap);
+          ta.focus();
+
+          function finishSave(){
+            const newNote = ta.value;
+            updateEntryNote(it.id, newNote).then(()=>{
+              renderHistory();
+            }).catch((err)=>{ console.warn('補足更新失敗', err); alert('補足の更新に失敗しました'); renderHistory(); });
+          }
+          function finishCancel(){ renderHistory(); }
+
+          saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
+          cancelBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
+
+          ta.addEventListener('keydown', (ev)=>{
+            if (ev.key === 'Escape') { ev.preventDefault(); finishCancel(); }
+          });
+        });
+
+        // ボタン配置：開く・削除（1行目） / 名前編集・補足編集（2行目）
+        // DOM に追加する順序を変えることで意図した並びになるように
+        actions.appendChild(openBtn);
+        actions.appendChild(delBtn);
+        actions.appendChild(editBtn);
+        actions.appendChild(editNoteBtn);
 
         el.appendChild(thumb); el.appendChild(meta); el.appendChild(actions);
         historyList.appendChild(el);
@@ -797,6 +1131,11 @@
     async function openFromHistory(id){
       const entry = await getEntry(id);
       if (!entry) return alert('履歴が見つかりませんでした');
+
+      if (!entry.blob) {
+        alert('この履歴は容量節約のため動画本体が保存されていません（再度ファイルを開いてください）');
+        return;
+      }
 
       if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
       currentObjectUrl = URL.createObjectURL(entry.blob);
