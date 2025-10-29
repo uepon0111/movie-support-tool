@@ -46,6 +46,12 @@
       --hist-padding-x: calc(var(--hist-size) * 0.18);
       --hist-font: calc(var(--hist-size) * 0.28);
       --hist-radius: calc(var(--hist-size) * 0.16);
+
+      /* タグチップのサイズ（履歴と連動） */
+      --tag-font: calc(var(--hist-font) * 0.9);
+      --tag-padding-y: 4px;
+      --tag-padding-x: 8px;
+      --tag-radius: 8px;
     }
 
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
@@ -62,15 +68,9 @@
     /* 履歴リスト（最小限のスタイル） */
     .history-wrap{width:100%;max-width:720px;margin-top:8px}
     .history-head{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      margin-bottom:8px;
-      gap:8px;
-      flex-wrap:wrap;
+      display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px;flex-wrap:wrap;
     }
     .history-left{display:flex;align-items:center;gap:8px}
-    /* history-controls をフレックスにして要素が横並びかつ折り返すように */
     .history-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .history-list{display:flex;flex-direction:column;gap:8px;max-height:240px;overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
     /* ここは微修正：複数行タイトルに対応するため top 揃えにする */
@@ -79,11 +79,24 @@
     .thumb{width:96px;height:54px;background:#ddd;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden}
     .thumb img{width:100%;height:100%;object-fit:cover}
     .meta{flex:1;min-width:0}
+    /* タイトル行をフレキシブルにしてチップと共存させる */
+    .meta .title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     /* ここを変更：タイトルを折り返して全文表示する */
     .meta .name{font-size:14px;color:#111;white-space:normal;overflow-wrap:break-word;word-break:break-word;overflow:visible;text-overflow:unset}
     .meta .sub{font-size:12px;color:#666;margin-top:2px}
     /* 新規：補足表示 */
     .meta .note{font-size:12px;color:#444;margin-top:6px;white-space:pre-wrap}
+    /* タグチップ */
+    .tag-chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+    .tag-chip{
+      display:inline-flex;align-items:center;justify-content:center;
+      padding:var(--tag-padding-y) var(--tag-padding-x);
+      border-radius:var(--tag-radius);font-size:var(--tag-font);font-weight:600;
+      color:#fff;white-space:nowrap;
+      box-shadow: 0 1px 1px rgba(0,0,0,0.12);
+    }
+    .tag-chip.uncat{ background:#9aa0a6; color:#fff; }
+
     /* 履歴内アクションをグリッドにして2列表示（開く/削除 の1行目、名前編集/補足編集 の2行目） */
     .history-actions{
       display:grid;
@@ -122,6 +135,16 @@
 
     /* カテゴリ周りの小さな調整（追加） */
     .category-controls { display:flex; align-items:center; gap:8px; }
+
+    /* カテゴリ編集モーダル */
+    .modal-backdrop{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;z-index:9999}
+    .modal{background:#fff;border-radius:12px;padding:16px;max-width:720px;width:94%;max-height:80vh;overflow:auto;box-sizing:border-box}
+    .modal h2{margin:0 0 12px;font-size:18px}
+    .cat-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+    .cat-row input[type="text"]{flex:1;padding:8px;border-radius:6px;border:1px solid #ddd}
+    .cat-row input[type="color"]{width:44px;height:34px;border:1px solid #ddd;border-radius:6px;padding:2px;background:#fff}
+    .modal .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+
     /* ビューア全体 */
     .viewer{display:none;height:100vh;width:100vw}
     .video-wrap{height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:#000;position:relative;touch-action:none}
@@ -370,6 +393,9 @@
               <!-- option は JS で埋める -->
             </select>
 
+            <!-- 項目編集（モーダルを開く） -->
+            <button id="editCategoryBtn" class="small-btn" title="項目の名前・色を編集">項目編集</button>
+
             <!-- 新規項目 / 項目削除 -->
             <button id="createCategoryBtn" class="small-btn" title="新しい項目を作成">新規項目</button>
             <button id="deleteCategoryBtn" class="small-btn" title="選択中の項目を削除">項目削除</button>
@@ -384,6 +410,19 @@
       <div class="history-list" id="historyList" aria-live="polite"></div>
     </div>
   </main>
+
+  <!-- カテゴリ編集モーダル -->
+  <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="項目編集">
+      <h2>項目編集</h2>
+      <div id="categoryEditorContent">
+        <!-- JS がここにカテゴリ行を描画します -->
+      </div>
+      <div class="modal-actions">
+        <button id="closeCategoryEditor" class="small-btn">閉じる</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ビューア画面 -->
   <section id="viewer" class="viewer" aria-hidden="true">
@@ -488,6 +527,11 @@
     const categorySelect = document.getElementById('categorySelect');
     const createCategoryBtn = document.getElementById('createCategoryBtn');
     const deleteCategoryBtn = document.getElementById('deleteCategoryBtn');
+    const editCategoryBtn = document.getElementById('editCategoryBtn');
+
+    const modalBackdrop = document.getElementById('modalBackdrop');
+    const categoryEditorContent = document.getElementById('categoryEditorContent');
+    const closeCategoryEditor = document.getElementById('closeCategoryEditor');
 
     let currentObjectUrl = null;
     let currentHistoryId = null;
@@ -683,11 +727,62 @@
     const UNCATEGORIZED_ID = 'uncategorized';
     const ALL_ID = 'all';
 
+    // カラー関連ユーティリティ
+    function isValidHexColor(s){
+      return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(s);
+    }
+    function expandHex(hex){
+      if (!hex) return hex;
+      if (hex.length === 4) {
+        return '#' + hex[1]+hex[1]+hex[2]+hex[2]+hex[3]+hex[3];
+      }
+      return hex;
+    }
+    function hashStringToColor(str){
+      // simple deterministic color from string (fallback)
+      let h = 2166136261 >>> 0;
+      for (let i=0;i<str.length;i++){
+        h = Math.imul(h ^ str.charCodeAt(i), 16777619) >>> 0;
+      }
+      const r = (h & 0xff0000) >> 16;
+      const g = (h & 0x00ff00) >> 8;
+      const b = (h & 0x0000ff);
+      const mix = 90;
+      const rr = Math.round((r + mix) / 2);
+      const gg = Math.round((g + mix) / 2);
+      const bb = Math.round((b + mix) / 2);
+      return '#' + [rr,gg,bb].map(x => x.toString(16).padStart(2,'0')).join('');
+    }
+    function hexToRgb(hex){
+      if(!hex) return null;
+      hex = expandHex(hex);
+      const m = /^#?([0-9a-fA-F]{6})$/.exec(hex);
+      if (!m) return null;
+      const v = m[1];
+      return { r: parseInt(v.slice(0,2),16), g: parseInt(v.slice(2,4),16), b: parseInt(v.slice(4,6),16) };
+    }
+    function isLightColor(hex){
+      const rgb = hexToRgb(hex);
+      if (!rgb) return false;
+      const L = 0.2126*rgb.r + 0.7152*rgb.g + 0.0722*rgb.b;
+      return L > 180;
+    }
+    function contrastingTextColor(hex){
+      return isLightColor(hex) ? '#111' : '#fff';
+    }
+
     function loadUserCategories(){
       try {
         const raw = localStorage.getItem(CATS_KEY);
         if (!raw) return [];
-        return JSON.parse(raw);
+        const arr = JSON.parse(raw);
+        // ensure color exists; default to white per request
+        let changed = false;
+        for (const c of arr){
+          if (!c.color) { c.color = '#ffffff'; changed = true; }
+        }
+        if (changed) saveUserCategories(arr);
+        return arr;
       } catch (e) { return []; }
     }
     function saveUserCategories(arr){
@@ -719,11 +814,27 @@
       }
     }
 
-    // カテゴリ作成（ユニークIDを生成）
+    // カテゴリ作成（ユニークIDを生成）。色指定も受け付ける（prompt）
     function createCategory(name){
       const users = loadUserCategories();
       const id = 'cat_' + Date.now() + '_' + Math.floor(Math.random()*1000);
-      users.push({id, name: name || ('項目 ' + (users.length + 1)), createdAt: Date.now()});
+      const nm = name || ('項目 ' + (users.length + 1));
+      // ask for color
+      let color = prompt('項目のカラーを入力してください（例: #ff6633）。何も入力しなければデフォルトの白になります。', '');
+      if (color) {
+        color = color.trim();
+        if (!color.startsWith('#')) color = '#' + color;
+        color = color.toLowerCase();
+        if (!isValidHexColor(color)) {
+          alert('無効なカラー指定です。白 (#ffffff) を割り当てます。');
+          color = '#ffffff';
+        } else {
+          color = expandHex(color);
+        }
+      } else {
+        color = '#ffffff';
+      }
+      users.push({id, name: nm, createdAt: Date.now(), color});
       saveUserCategories(users);
       populateCategorySelect();
       return id;
@@ -745,11 +856,10 @@
         const store = tx.objectStore(STORE_NAME);
         const all = await getAllFromStore(store);
         for (const it of all){
-          // support legacy field categoryId
           const cids = Array.isArray(it.categoryIds) ? it.categoryIds.slice() : (it.categoryId ? [it.categoryId] : []);
           if (cids.includes(id)){
             const newCids = cids.filter(x=>x !== id);
-            it.categoryIds = newCids; // may be empty => uncategorized
+            it.categoryIds = newCids;
             if (it.hasOwnProperty('categoryId')) delete it.categoryId;
             store.put(it);
           }
@@ -775,8 +885,7 @@
             return;
           }
           if (Array.isArray(newCategoryId)){
-            // sanitize: remove ALL_ID, keep only known ids and UNCATEGORIZED represented as empty array
-            const filtered = newCategoryId.filter(x => x && x !== ALL_ID);
+            const filtered = newCategoryId.filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
             val.categoryIds = filtered;
           } else {
             if (!newCategoryId || newCategoryId === UNCATEGORIZED_ID){
@@ -787,7 +896,6 @@
               val.categoryIds = [newCategoryId];
             }
           }
-          // remove legacy single field if present
           if (val.hasOwnProperty('categoryId')) delete val.categoryId;
           const put = store.put(val);
           put.onsuccess = ()=> {
@@ -813,9 +921,72 @@
       return copy;
     }
 
-    // サムネイル機能を削除しました:
-    // - サイトを開いたときに動画を読み込む処理（サムネイル生成）を行わないようにしています。
-    // - ここではサムネイル領域自体を非表示にして、ファイルを開くボタンを押すまで動画を読み込まない
+    function stripExtension(filename){
+      if (!filename) return filename;
+      const lastDot = filename.lastIndexOf('.');
+      if (lastDot > 0) {
+        return filename.substring(0, lastDot);
+      }
+      return filename;
+    }
+
+    // カテゴリ編集モーダルの描画
+    function openCategoryEditor(){
+      categoryEditorContent.innerHTML = '';
+      const users = loadUserCategories();
+      if (users.length === 0) {
+        const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
+        categoryEditorContent.appendChild(p);
+      } else {
+        users.forEach((c)=>{
+          const row = document.createElement('div'); row.className = 'cat-row';
+          const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name;
+          const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
+          const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
+          const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
+          row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(saveBtn); row.appendChild(delBtn);
+          categoryEditorContent.appendChild(row);
+
+          saveBtn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            const newName = nameIn.value.trim() || c.name;
+            let newColor = colorIn.value || '#ffffff';
+            if (!newColor.startsWith('#')) newColor = '#' + newColor;
+            if (!isValidHexColor(newColor)) newColor = '#ffffff';
+            // update stored categories
+            const all = loadUserCategories();
+            const idx = all.findIndex(x=>x.id===c.id);
+            if (idx !== -1){
+              all[idx].name = newName;
+              all[idx].color = expandHex(newColor);
+              saveUserCategories(all);
+              populateCategorySelect();
+              renderHistory();
+              alert('保存しました');
+            } else {
+              alert('項目が見つかりませんでした');
+            }
+          });
+
+          delBtn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
+            deleteCategory(c.id);
+            // refresh modal
+            openCategoryEditor();
+          });
+        });
+      }
+      modalBackdrop.style.display = 'flex';
+      modalBackdrop.setAttribute('aria-hidden','false');
+    }
+
+    function closeCategoryEditorModal(){
+      modalBackdrop.style.display = 'none';
+      modalBackdrop.setAttribute('aria-hidden','true');
+    }
+
+    // サムネイル機能を削除しました（省略）
 
     async function renderHistory(){
       historyList.innerHTML = '';
@@ -826,7 +997,6 @@
       const selectedCat = categorySelect.value || ALL_ID;
       const filtered = finalSorted.filter(item => {
         if (selectedCat === ALL_ID) return true;
-        // migrate or normalize category ids
         const cids = Array.isArray(item.categoryIds) ? item.categoryIds : (item.categoryId ? [item.categoryId] : []);
         if (selectedCat === UNCATEGORIZED_ID) {
           return (!cids || cids.length === 0);
@@ -842,26 +1012,60 @@
       const users = loadUserCategories();
       const catList = [{id: ALL_ID, name:'全て'}, {id: UNCATEGORIZED_ID, name:'未分類'}, ...users];
 
+      // map id -> {name,color}
+      const catMap = {};
+      for (const c of users){ catMap[c.id] = {name:c.name, color: c.color || '#ffffff'}; }
+
       // 履歴を表示（サムネイルは読み込まず非表示）
       for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
 
-        // サムネイル機能は削除: プレースホルダー領域を作るが非表示にすることで
-        // レイアウトへの影響を最小限に留め、ファイルを開くボタンを押すまで動画を読み込まない
         const thumb = document.createElement('div'); thumb.className='thumb';
-        thumb.style.display = 'none'; // サムネイルを非表示（動画読み込みを行わない）
+        thumb.style.display = 'none';
 
         const meta = document.createElement('div'); meta.className='meta';
 
         const nameWrap = document.createElement('div');
-        const name = document.createElement('div'); name.className='name'; name.textContent = it.name;
+        nameWrap.className = 'title-row';
+        const name = document.createElement('div');
+        name.className='name';
+        name.textContent = stripExtension(it.name);
         nameWrap.appendChild(name);
+
+        // show tag chips after title
+        const chips = document.createElement('div');
+        chips.className = 'tag-chips';
+        const cids = Array.isArray(it.categoryIds) ? it.categoryIds : (it.categoryId ? [it.categoryId] : []);
+        if (!cids || cids.length === 0){
+          const chip = document.createElement('span');
+          chip.className = 'tag-chip uncat';
+          chip.textContent = '未分類';
+          chips.appendChild(chip);
+        } else {
+          for (const cid of cids){
+            const metaC = catMap[cid];
+            if (metaC){
+              const chip = document.createElement('span');
+              chip.className = 'tag-chip';
+              const col = metaC.color || '#ffffff';
+              chip.style.background = col;
+              chip.style.color = contrastingTextColor(col);
+              chip.textContent = metaC.name || cid;
+              chips.appendChild(chip);
+            } else {
+              const chip = document.createElement('span');
+              chip.className = 'tag-chip uncat';
+              chip.textContent = '未分類';
+              chips.appendChild(chip);
+            }
+          }
+        }
+        nameWrap.appendChild(chips);
 
         const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
 
-        // 新規: 補足（note）表示（存在しない場合は空表示）
         const noteDiv = document.createElement('div'); noteDiv.className = 'note';
         noteDiv.textContent = it.note || '';
         meta.appendChild(noteDiv);
@@ -872,12 +1076,14 @@
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
         const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
 
-        // 移動用セレクト（項目ごとに複数選択可能）
+        // 移動用セレクト（複数選択） + 適用・キャンセルボタン（即時更新はしない）
+        const moveWrap = document.createElement('div');
+        moveWrap.style.marginTop = '6px';
         const moveSelect = document.createElement('select');
         moveSelect.className = 'sort-select';
         moveSelect.setAttribute('aria-label', '項目に移動（複数選択可）');
         moveSelect.setAttribute('multiple', 'multiple');
-        // populate: exclude '全て' ここでは項目の割当先としては意味をなさないため除外
+        // populate (exclude '全て' as it's not a target)
         const moveOptions = [{id: UNCATEGORIZED_ID, name:'未分類'}, ...users];
         for (const c of moveOptions){
           const o = document.createElement('option');
@@ -885,27 +1091,72 @@
           o.textContent = c.name;
           moveSelect.appendChild(o);
         }
-        // set current selections
+        // set current selections visually
         const currentCids = Array.isArray(it.categoryIds) ? it.categoryIds : (it.categoryId ? [it.categoryId] : []);
-        // if empty -> select '未分類' visually (but underlying value is empty array). We'll mark UNCATEGORIZED visually selected.
         if (!currentCids || currentCids.length === 0){
-          // select the UNCATEGORIZED option if present
           for (const opt of moveSelect.options){
-            if (opt.value === UNCATEGORIZED_ID) { opt.selected = true; }
+            if (opt.value === UNCATEGORIZED_ID) opt.selected = true;
           }
         } else {
           for (const opt of moveSelect.options){
             if (currentCids.includes(opt.value)) opt.selected = true;
           }
         }
+        // apply / cancel buttons (ユーザーが完了した時点で移動を実行)
+        const applyBtn = document.createElement('button'); applyBtn.className='small-btn'; applyBtn.textContent='移動を適用';
+        const cancelBtn = document.createElement('button'); cancelBtn.className='small-btn'; cancelBtn.textContent='キャンセル';
+        // hide the apply/cancel by default; show only when user changes selection
+        applyBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
 
-        // 小さく見せたいので wrap して meta に入れる（レイアウト上は actions の隣）
-        const moveWrap = document.createElement('div');
-        moveWrap.style.marginTop = '6px';
+        // detect selection changes to show buttons
+        const originalSelected = Array.from(moveSelect.selectedOptions).map(o=>o.value).sort().join(',');
+        moveSelect.addEventListener('change', (e)=>{
+          const now = Array.from(moveSelect.selectedOptions).map(o=>o.value).sort().join(',');
+          if (now !== originalSelected) {
+            applyBtn.style.display = '';
+            cancelBtn.style.display = '';
+          } else {
+            applyBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+          }
+        });
+
+        applyBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          const opts = Array.from(moveSelect.selectedOptions).map(o=>o.value);
+          const filtered = opts.filter(v => v && v !== UNCATEGORIZED_ID);
+          const newCatArr = filtered.length === 0 ? [] : filtered;
+          updateEntryCategory(it.id, newCatArr).then(()=>{
+            renderHistory();
+          }).catch(err => { console.warn('カテゴリ更新失敗', err); alert('項目の移動に失敗しました'); renderHistory(); });
+        });
+
+        cancelBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          // reset selections to original
+          for (const opt of moveSelect.options){
+            opt.selected = false;
+          }
+          if (!currentCids || currentCids.length === 0){
+            for (const opt of moveSelect.options){
+              if (opt.value === UNCATEGORIZED_ID) opt.selected = true;
+            }
+          } else {
+            for (const opt of moveSelect.options){
+              if (currentCids.includes(opt.value)) opt.selected = true;
+            }
+          }
+          applyBtn.style.display = 'none';
+          cancelBtn.style.display = 'none';
+        });
+
         moveWrap.appendChild(moveSelect);
+        moveWrap.appendChild(applyBtn);
+        moveWrap.appendChild(cancelBtn);
         meta.appendChild(moveWrap);
 
-        // 「開く」ボタンを押したときに初めて動画を読み込んでビューアを開く
+        // 「開く」ボタン等
         openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
         delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
 
@@ -915,8 +1166,8 @@
           const input = document.createElement('input'); input.className='name-input'; input.value = it.name;
           input.setAttribute('aria-label', 'ファイル名編集');
           const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
-          const cancelBtn = document.createElement('button'); cancelBtn.className='small-btn'; cancelBtn.textContent='キャンセル';
-          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn);
+          const cancelBtn2 = document.createElement('button'); cancelBtn2.className='small-btn'; cancelBtn2.textContent='キャンセル';
+          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn2);
 
           nameWrap.appendChild(input); nameWrap.appendChild(editControls);
           input.focus();
@@ -930,7 +1181,7 @@
           function finishCancel(){ renderHistory(); }
 
           saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
-          cancelBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
+          cancelBtn2.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
 
           input.addEventListener('keydown', (ev)=>{
             if (ev.key === 'Enter') { ev.preventDefault(); finishSave(); }
@@ -938,25 +1189,22 @@
           });
         });
 
-        // 補足編集ボタンの挙動（既存）
+        // 補足編集
         editNoteBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
-          // noteDiv を編集領域に置換
           const originalNote = it.note || '';
-          // 保持されている nameWrap はそのまま表示（名前編集と排他になるが簡潔に）
           const noteEditWrap = document.createElement('div');
           const ta = document.createElement('textarea');
           ta.className = 'note-input';
           ta.value = originalNote;
           ta.setAttribute('aria-label', '補足編集');
           const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
-          const cancelBtn = document.createElement('button'); cancelBtn.className='small-btn'; cancelBtn.textContent='キャンセル';
-          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn);
+          const cancelBtn3 = document.createElement('button'); cancelBtn3.className='small-btn'; cancelBtn3.textContent='キャンセル';
+          const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn3);
 
           noteEditWrap.appendChild(ta);
           noteEditWrap.appendChild(editControls);
 
-          // replace noteDiv content
           noteDiv.innerHTML = '';
           noteDiv.appendChild(noteEditWrap);
           ta.focus();
@@ -970,29 +1218,13 @@
           function finishCancel(){ renderHistory(); }
 
           saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
-          cancelBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
+          cancelBtn3.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
 
           ta.addEventListener('keydown', (ev)=>{
             if (ev.key === 'Escape') { ev.preventDefault(); finishCancel(); }
           });
         });
 
-        // 移動セレクトの挙動：選択変更で即時保存（複数選択）
-        moveSelect.addEventListener('change', (e)=>{
-          e.stopPropagation();
-          const opts = Array.from(moveSelect.selectedOptions).map(o=>o.value);
-          // If user selected only '未分類' and other options are present, interpret as empty array
-          // (i.e. uncategorized)
-          const filtered = opts.filter(v => v && v !== UNCATEGORIZED_ID);
-          const newCatArr = filtered.length === 0 ? [] : filtered;
-          updateEntryCategory(it.id, newCatArr).then(()=>{
-            // 表示を更新（現在のフィルタが移動先と一致しない場合、アイテムは消える）
-            renderHistory();
-          }).catch(err => { console.warn('カテゴリ更新失敗', err); alert('項目の移動に失敗しました'); renderHistory(); });
-        });
-
-        // ボタン配置：開く・削除（1行目） / 名前編集・補足編集（2行目）
-        // DOM に追加する順序を変えることで意図した並びになるように
         actions.appendChild(openBtn);
         actions.appendChild(delBtn);
         actions.appendChild(editBtn);
@@ -1040,6 +1272,19 @@
     });
     categorySelect.addEventListener('change', ()=>{
       renderHistory();
+    });
+
+    // 項目編集モーダル
+    editCategoryBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openCategoryEditor();
+    });
+    closeCategoryEditor.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      closeCategoryEditorModal();
+    });
+    modalBackdrop.addEventListener('click', (e)=>{
+      if (e.target === modalBackdrop) closeCategoryEditorModal();
     });
 
     function preventTouchScroll(e){
@@ -1231,7 +1476,7 @@
     fwd5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(5); });
 
     [back3Btn,back5Btn,fwd3Btn,fwd5Btn].forEach(btn=>{
-      btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
+      if (btn) btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
     });
 
     if (mirrorBtn) {
@@ -1432,10 +1677,6 @@
 
     function formatTimeForLabel(sec){
       if (!isFinite(sec)) return '0:00';
-      const s = Math.floor(sec % 60).toString().padStart(2,'0');
-      const m = Math.floor(sec / 61).toString(); // intentionally changed? -> keep original logic: floor(sec/60)
-      // Oops: small bug above; fix to correct behavior:
-      // (but we try to change as little as possible; correct it below)
       return (function(realSec){
         if (!isFinite(realSec)) return '0:00';
         const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
