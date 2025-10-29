@@ -94,6 +94,8 @@
       border-radius:var(--tag-radius);font-size:var(--tag-font);font-weight:600;
       color:#fff;white-space:nowrap;
       box-shadow: 0 1px 1px rgba(0,0,0,0.12);
+      border: none;
+      cursor: pointer;
     }
     .tag-chip.uncat{ background:#9aa0a6; color:#fff; }
 
@@ -144,6 +146,7 @@
     .cat-row input[type="text"]{flex:1;padding:8px;border-radius:6px;border:1px solid #ddd}
     .cat-row input[type="color"]{width:44px;height:34px;border:1px solid #ddd;border-radius:6px;padding:2px;background:#fff}
     .modal .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    .reorder-btn{padding:6px 8px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer}
 
     /* ビューア全体 */
     .viewer{display:none;height:100vh;width:100vw}
@@ -414,7 +417,7 @@
   <!-- カテゴリ編集モーダル -->
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-label="項目編集">
-      <h2>項目編集</h2>
+      <h2>項目編集（上/下ボタンで並び替え）</h2>
       <div id="categoryEditorContent">
         <!-- JS がここにカテゴリ行を描画します -->
       </div>
@@ -871,6 +874,28 @@
       renderHistory();
     }
 
+    // カテゴリの並び替え（上へ/下へ）
+    function moveCategoryUp(id){
+      const users = loadUserCategories();
+      const i = users.findIndex(u=>u.id===id);
+      if (i > 0){
+        const tmp = users[i-1];
+        users[i-1] = users[i];
+        users[i] = tmp;
+        saveUserCategories(users);
+      }
+    }
+    function moveCategoryDown(id){
+      const users = loadUserCategories();
+      const i = users.findIndex(u=>u.id===id);
+      if (i >= 0 && i < users.length - 1){
+        const tmp = users[i+1];
+        users[i+1] = users[i];
+        users[i] = tmp;
+        saveUserCategories(users);
+      }
+    }
+
     // エントリのカテゴリを更新（newCategoryId: string | string[]）
     async function updateEntryCategory(id, newCategoryId){
       const db = await openDB();
@@ -930,7 +955,7 @@
       return filename;
     }
 
-    // カテゴリ編集モーダルの描画
+    // カテゴリ編集モーダルの描画（並び替えボタンを追加）
     function openCategoryEditor(){
       categoryEditorContent.innerHTML = '';
       const users = loadUserCategories();
@@ -938,14 +963,36 @@
         const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
         categoryEditorContent.appendChild(p);
       } else {
-        users.forEach((c)=>{
+        users.forEach((c, idx)=>{
           const row = document.createElement('div'); row.className = 'cat-row';
+          const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
+          const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
           const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name;
           const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
           const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
           const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
-          row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(saveBtn); row.appendChild(delBtn);
+          row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(saveBtn); row.appendChild(delBtn);
           categoryEditorContent.appendChild(row);
+
+          // disable up/down where appropriate
+          if (idx === 0) upBtn.disabled = true;
+          if (idx === users.length - 1) downBtn.disabled = true;
+
+          upBtn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            moveCategoryUp(c.id);
+            // re-render modal and select list
+            openCategoryEditor();
+            populateCategorySelect();
+            renderHistory();
+          });
+          downBtn.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            moveCategoryDown(c.id);
+            openCategoryEditor();
+            populateCategorySelect();
+            renderHistory();
+          });
 
           saveBtn.addEventListener('click', (e)=>{
             e.stopPropagation();
@@ -955,14 +1002,15 @@
             if (!isValidHexColor(newColor)) newColor = '#ffffff';
             // update stored categories
             const all = loadUserCategories();
-            const idx = all.findIndex(x=>x.id===c.id);
-            if (idx !== -1){
-              all[idx].name = newName;
-              all[idx].color = expandHex(newColor);
+            const idx2 = all.findIndex(x=>x.id===c.id);
+            if (idx2 !== -1){
+              all[idx2].name = newName;
+              all[idx2].color = expandHex(newColor);
               saveUserCategories(all);
               populateCategorySelect();
               renderHistory();
               alert('保存しました');
+              openCategoryEditor(); // re-render to reflect possible button state changes
             } else {
               alert('項目が見つかりませんでした');
             }
@@ -1033,30 +1081,48 @@
         name.textContent = stripExtension(it.name);
         nameWrap.appendChild(name);
 
-        // show tag chips after title
+        // show tag chips after title (clickable to jump to that item)
         const chips = document.createElement('div');
         chips.className = 'tag-chips';
         const cids = Array.isArray(it.categoryIds) ? it.categoryIds : (it.categoryId ? [it.categoryId] : []);
         if (!cids || cids.length === 0){
-          const chip = document.createElement('span');
+          const chip = document.createElement('button');
           chip.className = 'tag-chip uncat';
           chip.textContent = '未分類';
+          chip.title = '未分類 を表示';
+          chip.addEventListener('click', (e)=>{
+            e.stopPropagation();
+            categorySelect.value = UNCATEGORIZED_ID;
+            categorySelect.dispatchEvent(new Event('change', {bubbles:true}));
+          });
           chips.appendChild(chip);
         } else {
           for (const cid of cids){
             const metaC = catMap[cid];
             if (metaC){
-              const chip = document.createElement('span');
+              const chip = document.createElement('button');
               chip.className = 'tag-chip';
               const col = metaC.color || '#ffffff';
               chip.style.background = col;
               chip.style.color = contrastingTextColor(col);
               chip.textContent = metaC.name || cid;
+              chip.title = `${metaC.name} を表示`;
+              chip.addEventListener('click', (e)=>{
+                e.stopPropagation();
+                categorySelect.value = cid;
+                categorySelect.dispatchEvent(new Event('change', {bubbles:true}));
+              });
               chips.appendChild(chip);
             } else {
-              const chip = document.createElement('span');
+              const chip = document.createElement('button');
               chip.className = 'tag-chip uncat';
               chip.textContent = '未分類';
+              chip.title = '未分類 を表示';
+              chip.addEventListener('click', (e)=>{
+                e.stopPropagation();
+                categorySelect.value = UNCATEGORIZED_ID;
+                categorySelect.dispatchEvent(new Event('change', {bubbles:true}));
+              });
               chips.appendChild(chip);
             }
           }
@@ -1076,7 +1142,7 @@
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
         const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
 
-        // 移動用セレクト（複数選択） + 適用・キャンセルボタン（即時更新はしない）
+        // 移動用セレクト（複数選択） + 適用・キャンセルボタン（ユーザーが完了した時点で移動を実行）
         const moveWrap = document.createElement('div');
         moveWrap.style.marginTop = '6px';
         const moveSelect = document.createElement('select');
