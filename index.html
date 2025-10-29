@@ -668,7 +668,7 @@
       return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     })();
 
-    // 動画ブロブからサムネイル生成（堅牢化: タイムアウト・エラーハンドリング）
+    // （既存のサムネイル生成関数は保持していますが、履歴表示時には実行しません）
     function generateThumbnailFromBlob(blob, seekTo = 0.1, maxWidth = 320){
       return new Promise((resolve) => {
         if (!blob || typeof blob.size !== 'number') { resolve(PLACEHOLDER_THUMBNAIL); return; }
@@ -857,6 +857,7 @@
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
 
+    // 変更点: renderHistory はページ表示時に動画やサムネイルを読み込まない（タイトルのみ表示）
     async function renderHistory(){
       historyList.innerHTML = '';
       const items = await getHistory();
@@ -864,30 +865,14 @@
 
       if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
 
-      // 並列にサムネイル作っても良いが、メモリ対策で逐次処理（必要に応じて変更可）
       for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
 
+        // thumb を作るが非表示にして、ページ読み込み時に動画データを取得しないようにする
         const thumb = document.createElement('div'); thumb.className='thumb';
-        const img = document.createElement('img');
-        img.alt = it.name + ' のサムネイル';
-        img.loading = 'lazy';
-
-        try{
-          if (it.blob && typeof it.blob.size === 'number') {
-            // blob がある場合はサムネイル生成を試みる
-            const thumbData = await generateThumbnailFromBlob(it.blob, 0.1, 320);
-            img.src = thumbData || PLACEHOLDER_THUMBNAIL;
-          } else {
-            // blob が無い（容量節約で保存されている）場合はプレースホルダー
-            img.src = PLACEHOLDER_THUMBNAIL;
-          }
-        }catch(e){
-          img.src = PLACEHOLDER_THUMBNAIL;
-        }
-
-        thumb.appendChild(img);
+        // 非表示にすることで「タイトルのみ表示」の要求を満たす
+        thumb.style.display = 'none';
 
         const meta = document.createElement('div'); meta.className='meta';
 
@@ -898,7 +883,7 @@
         const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
 
-        // 新規: 補足（note）表示（存在しない場合は空表示）
+        // 補足（note）表示（存在しない場合は空表示）
         const noteDiv = document.createElement('div'); noteDiv.className = 'note';
         noteDiv.textContent = it.note || '';
         meta.appendChild(noteDiv);
@@ -909,6 +894,7 @@
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
         const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
 
+        // 「開く」ボタン押下時に初めて動画データを読み込む（既存の openFromHistory を利用）
         openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
         delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
 
