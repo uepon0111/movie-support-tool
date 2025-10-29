@@ -662,202 +662,10 @@
       return copy;
     }
 
-    // プレースホルダーSVG（サムネイル生成失敗時用）
-    const PLACEHOLDER_THUMBNAIL = (function(){
-      const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180'><rect width='100%' height='100%' fill='#ddd'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='#777' font-family='sans-serif' font-size='14'>プレビューなし</text></svg>`;
-      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    })();
+    // サムネイル機能を削除しました:
+    // - サイトを開いたときに動画を読み込む処理（サムネイル生成）を行わないようにしています。
+    // - ここではサムネイル領域自体を非表示にして、タイトルのみを表示します。
 
-    // （既存のサムネイル生成関数は保持していますが、履歴表示時には実行しません）
-    function generateThumbnailFromBlob(blob, seekTo = 0.1, maxWidth = 320){
-      return new Promise((resolve) => {
-        if (!blob || typeof blob.size !== 'number') { resolve(PLACEHOLDER_THUMBNAIL); return; }
-
-        const url = URL.createObjectURL(blob);
-        const v = document.createElement('video');
-        let resolved = false;
-        const cleanup = () => {
-          try { v.pause(); v.removeAttribute('src'); } catch(e){}
-          try { URL.revokeObjectURL(url); } catch(e){}
-        };
-
-        const timeoutId = setTimeout(() => {
-          if (!resolved) {
-            resolved = true;
-            cleanup();
-            resolve(PLACEHOLDER_THUMBNAIL);
-          }
-        }, 2500);
-
-        v.preload = 'metadata';
-        v.muted = true;
-        v.playsInline = true;
-        v.src = url;
-        v.crossOrigin = 'anonymous';
-
-        function doCapture() {
-          try {
-            const vw = v.videoWidth || 16;
-            const vh = v.videoHeight || 9;
-            if (vw === 0 || vh === 0) {
-              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
-              return;
-            }
-            const ratio = vw / vh;
-            const width = Math.min(maxWidth, vw);
-            const height = Math.round(width / ratio);
-
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0,0,width,height);
-            try {
-              ctx.drawImage(v, 0, 0, width, height);
-              const data = canvas.toDataURL('image/jpeg', 0.8);
-              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(data); }
-            } catch (err) {
-              if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
-            }
-          } catch (e) {
-            if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
-          }
-        }
-
-        v.addEventListener('loadeddata', () => {
-          try {
-            const dur = isFinite(v.duration) ? v.duration : 0;
-            const target = (dur > seekTo) ? seekTo : 0;
-            if (dur > 0 && target > 0) {
-              const onSeeked = function() {
-                v.removeEventListener('seeked', onSeeked);
-                setTimeout(doCapture, 60);
-              };
-              v.addEventListener('seeked', onSeeked);
-              try { v.currentTime = target; } catch (e) {
-                setTimeout(doCapture, 60);
-              }
-            } else {
-              setTimeout(doCapture, 60);
-            }
-          } catch (e) {
-            if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
-          }
-        }, {once:true});
-
-        v.addEventListener('error', () => {
-          if (!resolved) { resolved = true; clearTimeout(timeoutId); cleanup(); resolve(PLACEHOLDER_THUMBNAIL); }
-        }, {once:true});
-      });
-    }
-
-    /**
-     * 保存処理の改善点:
-     * - 読み取り（既存チェック）を readonly トランザクションで行い、
-     *   新規追加は readwrite トランザクションで行う（混在による競合を避ける）。
-     * - トランザクション完了を待ってから処理を返す。
-     * - QuotaExceededError 等で保存に失敗した場合は最小情報（blob: null）で再試行する。
-     */
-    async function saveFileToHistory(file){
-      try{
-        const db = await openDB();
-
-        // --- 既存チェック（readonly） ---
-        try {
-          const txr = db.transaction(STORE_NAME, 'readonly');
-          const storer = txr.objectStore(STORE_NAME);
-          const all = await getAllFromStore(storer);
-          try { await waitForTransactionComplete(txr); } catch(e){}
-          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
-          if (match) {
-            // 更新 (createdAt) は readwrite で行う
-            const txu = db.transaction(STORE_NAME, 'readwrite');
-            const storeu = txu.objectStore(STORE_NAME);
-            match.createdAt = Date.now();
-            storeu.put(match);
-            await waitForTransactionComplete(txu);
-            // トリムはバックグラウンドで行う（await しても良い）
-            trimHistoryLimit(db).catch(()=>{});
-            return match.id;
-          }
-        } catch (e) {
-          // 既存チェック失敗しても保存自体を試みる（ログだけ）
-          console.warn('既存チェックに失敗しました（続行します）', e);
-        }
-
-        // --- 新規追加（readwrite） ---
-        const entry = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified || 0,
-          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
-          createdAt: Date.now(),
-          note: '' // 新規: 補足フィールドを追加（空文字で初期化）
-        };
-
-        try {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          const addReq = store.add(entry);
-          const id = await promisifyRequest(addReq);
-          await waitForTransactionComplete(tx);
-          // trim を同期的に実行（非致命的）
-          await trimHistoryLimit(db);
-          return id;
-        } catch (err) {
-          console.warn('最初の追加でエラー', err);
-          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
-          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
-            try {
-              // 古いものをいくつか削除して再挑戦
-              const txr2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = txr2.objectStore(STORE_NAME);
-              const all = await getAllFromStore(store2);
-              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
-              // 古いものを 3 件まで削除
-              const remove = sorted.slice(0, Math.min(3, sorted.length));
-              for (const it of remove) store2.delete(it.id);
-              await waitForTransactionComplete(txr2);
-            } catch (cleanupErr) {
-              console.warn('クリーンアップ中にエラー', cleanupErr);
-            }
-            // blob を null にして保存（容量を節約）
-            try {
-              const tx2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = tx2.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq2 = store2.add(entrySmall);
-              const id2 = await promisifyRequest(addReq2);
-              await waitForTransactionComplete(tx2);
-              await trimHistoryLimit(db);
-              return id2;
-            } catch (finalErr) {
-              console.warn('最終的な追加にも失敗しました', finalErr);
-              return null;
-            }
-          } else {
-            // その他のエラー: 可能なら blob を外して保存
-            try {
-              const tx3 = db.transaction(STORE_NAME, 'readwrite');
-              const store3 = tx3.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq3 = store3.add(entrySmall);
-              const id3 = await promisifyRequest(addReq3);
-              await waitForTransactionComplete(tx3);
-              await trimHistoryLimit(db);
-              return id3;
-            } catch (err2) {
-              console.warn('blob を外しても保存失敗', err2);
-              return null;
-            }
-          }
-        }
-      }catch(err){ console.warn('保存に失敗しました', err); return null; }
-    }
-
-    // 変更点: renderHistory はページ表示時に動画やサムネイルを読み込まない（タイトルのみ表示）
     async function renderHistory(){
       historyList.innerHTML = '';
       const items = await getHistory();
@@ -865,14 +673,15 @@
 
       if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
 
+      // 履歴を表示（サムネイルは読み込まず非表示）
       for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
 
-        // thumb を作るが非表示にして、ページ読み込み時に動画データを取得しないようにする
+        // サムネイル機能は削除: プレースホルダー領域を作るが非表示にすることで
+        // レイアウトへの影響を最小限に留め、ファイルを開くボタンを押すまで動画を読み込まない
         const thumb = document.createElement('div'); thumb.className='thumb';
-        // 非表示にすることで「タイトルのみ表示」の要求を満たす
-        thumb.style.display = 'none';
+        thumb.style.display = 'none'; // サムネイルを非表示（動画読み込みを行わない）
 
         const meta = document.createElement('div'); meta.className='meta';
 
@@ -883,7 +692,7 @@
         const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
 
-        // 補足（note）表示（存在しない場合は空表示）
+        // 新規: 補足（note）表示（存在しない場合は空表示）
         const noteDiv = document.createElement('div'); noteDiv.className = 'note';
         noteDiv.textContent = it.note || '';
         meta.appendChild(noteDiv);
@@ -894,7 +703,7 @@
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
         const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
 
-        // 「開く」ボタン押下時に初めて動画データを読み込む（既存の openFromHistory を利用）
+        // 「開く」ボタンを押したときに初めて動画を読み込んでビューアを開く
         openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
         delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
 
@@ -1393,6 +1202,110 @@
     video.addEventListener('loadeddata', () => { renderMarkers(); });
     video.addEventListener('seeked', () => { renderMarkers(); });
     window.addEventListener('resize', () => { renderMarkers(); });
+
+    /**
+     * 以下は履歴保存処理（saveFileToHistory）です。
+     * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
+     * （サムネイル生成のみ削除済み）
+     */
+    async function saveFileToHistory(file){
+      try{
+        const db = await openDB();
+
+        // --- 既存チェック（readonly） ---
+        try {
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+          if (match) {
+            // 更新 (createdAt) は readwrite で行う
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            match.createdAt = Date.now();
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            // トリムはバックグラウンドで行う（await しても良い）
+            trimHistoryLimit(db).catch(()=>{});
+            return match.id;
+          }
+        } catch (e) {
+          // 既存チェック失敗しても保存自体を試みる（ログだけ）
+          console.warn('既存チェックに失敗しました（続行します）', e);
+        }
+
+        // --- 新規追加（readwrite） ---
+        const entry = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified || 0,
+          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
+          createdAt: Date.now(),
+          note: '' // 新規: 補足フィールドを追加（空文字で初期化）
+        };
+
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const addReq = store.add(entry);
+          const id = await promisifyRequest(addReq);
+          await waitForTransactionComplete(tx);
+          // trim を同期的に実行（非致命的）
+          await trimHistoryLimit(db);
+          return id;
+        } catch (err) {
+          console.warn('最初の追加でエラー', err);
+          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
+          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
+            try {
+              // 古いものをいくつか削除して再挑戦
+              const txr2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = txr2.objectStore(STORE_NAME);
+              const all = await getAllFromStore(store2);
+              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
+              // 古いものを 3 件まで削除
+              const remove = sorted.slice(0, Math.min(3, sorted.length));
+              for (const it of remove) store2.delete(it.id);
+              await waitForTransactionComplete(txr2);
+            } catch (cleanupErr) {
+              console.warn('クリーンアップ中にエラー', cleanupErr);
+            }
+            // blob を null にして保存（容量を節約）
+            try {
+              const tx2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = tx2.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq2 = store2.add(entrySmall);
+              const id2 = await promisifyRequest(addReq2);
+              await waitForTransactionComplete(tx2);
+              await trimHistoryLimit(db);
+              return id2;
+            } catch (finalErr) {
+              console.warn('最終的な追加にも失敗しました', finalErr);
+              return null;
+            }
+          } else {
+            // その他のエラー: 可能なら blob を外して保存
+            try {
+              const tx3 = db.transaction(STORE_NAME, 'readwrite');
+              const store3 = tx3.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq3 = store3.add(entrySmall);
+              const id3 = await promisifyRequest(addReq3);
+              await waitForTransactionComplete(tx3);
+              await trimHistoryLimit(db);
+              return id3;
+            } catch (err2) {
+              console.warn('blob を外しても保存失敗', err2);
+              return null;
+            }
+          }
+        }
+      }catch(err){ console.warn('保存に失敗しました', err); return null; }
+    }
+
   </script>
 </body>
 </html>
