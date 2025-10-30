@@ -89,45 +89,6 @@
       box-sizing:border-box;
     }
 
-    /* 新: 再読み込みボタンの下に表示する設定（APIキー設定）ボタン/パネル */
-    #gdriveSettingsBtn {
-      position: absolute;
-      top: calc(12px + 40px);
-      right: 12px;
-      z-index: 1199;
-      height: calc(var(--ctrl-size) * 0.60);
-      min-width: calc(var(--ctrl-size) * 0.60);
-      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
-      font-size: calc(var(--ctrl-font) * 0.80);
-      border-radius: calc(var(--ctrl-radius) * 0.9);
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      box-sizing:border-box;
-      background:#fff;
-      border:1px solid #ddd;
-      cursor:pointer;
-    }
-
-    #gdriveSettingsPanel {
-      position: absolute;
-      top: calc(12px + 40px + 44px);
-      right: 12px;
-      z-index: 1198;
-      width: 320px;
-      max-width: calc(100vw - 48px);
-      background: #fff;
-      border-radius: 8px;
-      box-shadow: 0 6px 18px rgba(0,0,0,0.18);
-      padding: 12px;
-      display: none;
-      box-sizing: border-box;
-      color: #111;
-    }
-    #gdriveSettingsPanel label{display:block;font-size:13px;margin-top:8px;color:#333}
-    #gdriveSettingsPanel input{width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;box-sizing:border-box;margin-top:6px}
-    #gdriveSettingsPanel .panel-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end}
-
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
     #pickerScreen h1,#pickerScreen p{color:inherit}
@@ -411,33 +372,14 @@
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
 
-    <!-- 再読み込みボタンの下に API 設定ボタン（ユーザー要望） -->
-    <button id="gdriveSettingsBtn" title="Google API 設定" aria-label="Google API 設定">API 設定</button>
-    <div id="gdriveSettingsPanel" role="dialog" aria-hidden="true">
-      <div style="font-weight:700">Google API 設定</div>
-      <label for="gapiClientId">OAuth Client ID (Client ID)</label>
-      <input id="gapiClientId" type="text" placeholder="例: xxxxxxxxxxx.apps.googleusercontent.com" />
-      <label for="gapiApiKey">API Key (API key)</label>
-      <input id="gapiApiKey" type="text" placeholder="例: AIzaSy..." />
-      <div style="font-size:12px;color:#666;margin-top:8px">
-        ※ Google Drive から読み込むには Drive API と Picker API の有効化と、OAuth クライアント設定が必要です。
-      </div>
-      <div class="panel-actions">
-        <button id="saveGApiBtn" class="small-btn">保存</button>
-        <button id="closeGApiBtn" class="small-btn">閉じる</button>
-      </div>
-    </div>
-
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
-      <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、履歴に追加されます。動画再生は履歴から「開く」を押してください）。</p>
+      <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、自動で動画画面に遷移します）。</p>
 
       <!-- 要望に合わせてボタンを段落の直下に配置 -->
-      <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <div style="margin-top:8px">
         <button id="pickBtn" class="btn primary" type="button" aria-label="ファイルを取得">ファイルを取得</button>
-        <input id="fileInput" type="file" accept="video/*" style="display:none" multiple />
-        <!-- Google Drive 読み込みボタン -->
-        <button id="gdrivePickBtn" class="btn" type="button" aria-label="Google Driveから読み込む">Google Driveから読み込む</button>
+        <input id="fileInput" type="file" accept="video/*" style="display:none" />
       </div>
     </div>
 
@@ -562,14 +504,6 @@
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
 
-    const gdrivePickBtn = document.getElementById('gdrivePickBtn');
-    const gdriveSettingsBtn = document.getElementById('gdriveSettingsBtn');
-    const gdriveSettingsPanel = document.getElementById('gdriveSettingsPanel');
-    const gapiClientIdInput = document.getElementById('gapiClientId');
-    const gapiApiKeyInput = document.getElementById('gapiApiKey');
-    const saveGApiBtn = document.getElementById('saveGApiBtn');
-    const closeGApiBtn = document.getElementById('closeGApiBtn');
-
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
     const video = document.getElementById('video');
@@ -624,13 +558,6 @@
     let isSeeking = false;
 
     let markers = [];
-
-    // Google Drive: token & picker globals
-    let gdriveOauthToken = null;
-    let gdrivePickerApiLoaded = false;
-    let gapiJsLoaded = false;
-    let gsiJsLoaded = false;
-    let tokenClient = null;
 
     // モーダル用の一時カテゴリ配列（編集中に並び替え・追加・削除を行うため）
     let modalUsers = null;
@@ -1521,6 +1448,9 @@
       const name = '新しい項目';
       modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
       // re-render modal
+      // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
+      // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
+      // quick re-render:
       (function renderModalRows(){
         categoryEditorContent.innerHTML = '';
         if (!modalUsers || modalUsers.length === 0){
@@ -1737,47 +1667,33 @@
     // pickBtn: 既存の <input> を開く
     pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
 
-    // ファイル選択: 複数対応。履歴に追加して遷移しない（ユーザ要望）
     fileInput.addEventListener('change', async () => {
-      const files = fileInput.files;
-      if (!files || files.length === 0) {
+      const f = fileInput.files && fileInput.files[0];
+      if (!f) {
         fileNameEl.textContent = 'まだファイルが選択されていません';
         return;
       }
 
-      // Show brief info: number of files and last file's name
-      if (files.length === 1) {
-        const f = files[0];
-        fileNameEl.textContent = `${f.name} (${Math.round(f.size/1024)} KB) を履歴に追加しました`;
-      } else {
-        fileNameEl.textContent = `${files.length} 個のファイルを履歴に追加しました（最後: ${files[files.length-1].name}）`;
-      }
+      fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
 
-      // revoke previous objectURL if any
       if (currentObjectUrl) {
         URL.revokeObjectURL(currentObjectUrl);
         currentObjectUrl = null;
       }
 
+      currentObjectUrl = URL.createObjectURL(f);
+      video.src = currentObjectUrl;
+      video.load();
+      video.playbackRate = 1.0;
+
       markers = [];
       clearMarkerElements();
 
-      // Save all files to history (sequentially to avoid race)
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        try {
-          const hid = await saveFileToHistory(f);
-          currentHistoryId = hid || currentHistoryId;
-        } catch (err) {
-          console.warn('ファイル保存エラー', err);
-        }
-      }
-
-      // refresh history list; do NOT auto-open viewer
+      const hid = await saveFileToHistory(f);
+      currentHistoryId = hid || null;
       renderHistory();
 
-      // clear file input so same file can be picked again if needed
-      fileInput.value = '';
+      await openViewer(true);
     });
 
     async function openFromHistory(id){
@@ -2178,220 +2094,6 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
-
-    /* ======================================================
-       Google Drive Picker 関連（簡易実装）
-       - 設定パネルで Client ID と API Key を保存し、Drive からファイルを取得します
-       - 実稼働には Google Cloud Console での設定（Picker API/Drive API の有効化、
-         OAuth クライアント作成、承認済み JavaScript 生成元の登録等）が必要です
-       - 以下は動作する場合のフローを実装しています（トークンを取得して、Picker で選択、
-         選択されたファイルを Drive API 経由でダウンロードして履歴に保存）
-       ====================================================== */
-
-    const GAPI_CLIENT_ID_KEY = 'GDRIVE_CLIENT_ID';
-    const GAPI_API_KEY_KEY = 'GDRIVE_API_KEY';
-
-    function loadSavedGApiSettings(){
-      const cid = localStorage.getItem(GAPI_CLIENT_ID_KEY) || '';
-      const akey = localStorage.getItem(GAPI_API_KEY_KEY) || '';
-      gapiClientIdInput.value = cid;
-      gapiApiKeyInput.value = akey;
-    }
-    function saveGApiSettingsToStorage(){
-      const cid = (gapiClientIdInput.value || '').trim();
-      const akey = (gapiApiKeyInput.value || '').trim();
-      if (cid) localStorage.setItem(GAPI_CLIENT_ID_KEY, cid); else localStorage.removeItem(GAPI_CLIENT_ID_KEY);
-      if (akey) localStorage.setItem(GAPI_API_KEY_KEY, akey); else localStorage.removeItem(GAPI_API_KEY_KEY);
-      alert('保存しました');
-    }
-
-    // 設定パネルのトグル
-    gdriveSettingsBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      const vis = gdriveSettingsPanel.style.display === 'block';
-      if (!vis) {
-        loadSavedGApiSettings();
-        gdriveSettingsPanel.style.display = 'block';
-        gdriveSettingsPanel.setAttribute('aria-hidden', 'false');
-      } else {
-        gdriveSettingsPanel.style.display = 'none';
-        gdriveSettingsPanel.setAttribute('aria-hidden', 'true');
-      }
-    });
-    closeGApiBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      gdriveSettingsPanel.style.display = 'none';
-      gdriveSettingsPanel.setAttribute('aria-hidden', 'true');
-    });
-    saveGApiBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      saveGApiSettingsToStorage();
-    });
-
-    // 動的に gapi / gsi を読み込む（ダブルロードを回避）
-    function ensureGapiJs(){
-      return new Promise((resolve, reject) => {
-        if (gapiJsLoaded) return resolve();
-        const s = document.createElement('script');
-        s.src = 'https://apis.google.com/js/api.js';
-        s.onload = () => { gapiJsLoaded = true; resolve(); };
-        s.onerror = () => reject(new Error('gapi load failed'));
-        document.head.appendChild(s);
-      });
-    }
-    function ensureGsiJs(){
-      return new Promise((resolve, reject) => {
-        if (gsiJsLoaded) return resolve();
-        const s = document.createElement('script');
-        s.src = 'https://accounts.google.com/gsi/client';
-        s.onload = () => { gsiJsLoaded = true; resolve(); };
-        s.onerror = () => reject(new Error('gsi load failed'));
-        document.head.appendChild(s);
-      });
-    }
-
-    // Picker API 読み込み
-    function ensurePickerApi(){
-      return new Promise((resolve, reject) => {
-        if (gdrivePickerApiLoaded) return resolve();
-        if (!window.gapi || !gapi.load) {
-          return reject(new Error('gapi not loaded'));
-        }
-        try {
-          gapi.load('picker', {callback: () => { gdrivePickerApiLoaded = true; resolve(); }, onerror: () => reject(new Error('picker load failed'))});
-        } catch (e) { reject(e); }
-      });
-    }
-
-    // OAuth token client を初期化
-    function initTokenClientIfNeeded(clientId, scope='https://www.googleapis.com/auth/drive.readonly') {
-      // google.accounts.oauth2.initTokenClient は gsi クライアントで提供される
-      if (!window.google || !google.accounts || !google.accounts.oauth2 || !google.accounts.oauth2.initTokenClient) {
-        return null;
-      }
-      if (tokenClient && tokenClient.clientId === clientId) return tokenClient;
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: scope,
-        callback: (resp) => {
-          // callback は requestAccessToken 呼び出し時に上書きされるのでここでは空にしておく
-        }
-      });
-      return tokenClient;
-    }
-
-    // Drive ファイルをダウンロードして Blob にして返す
-    async function fetchDriveFileAsBlob(fileId, accessToken) {
-      const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
-      const res = await fetch(url, { headers: { Authorization: 'Bearer ' + accessToken } });
-      if (!res.ok) throw new Error('Drive ファイル取得に失敗: ' + res.status);
-      const blob = await res.blob();
-      return blob;
-    }
-
-    // Google Picker で選択されたファイルを IndexedDB に保存する処理
-    async function handlePickerResponse(data, accessToken) {
-      if (!data || !data[google.picker.Response.ACTION]) return;
-      const action = data[google.picker.Response.ACTION];
-      if (action === google.picker.Action.PICKED) {
-        const docs = data[google.picker.Response.DOCUMENTS];
-        if (!docs || docs.length === 0) return;
-        for (const d of docs) {
-          try {
-            const fileId = d.id;
-            const name = d.name || ('drivefile_' + fileId);
-            // fetch the file content as blob via Drive API
-            const blob = await fetchDriveFileAsBlob(fileId, accessToken);
-            // determine mime type and size from blob
-            const f = new File([blob], name, { type: blob.type || 'application/octet-stream', lastModified: Date.now() });
-            await saveFileToHistory(f);
-          } catch (err) {
-            console.warn('Picker -> Drive fetch error', err);
-            alert('Google Drive ファイルの取得に失敗しました: ' + (err.message || err));
-          }
-        }
-        renderHistory();
-        fileNameEl.textContent = `Google Drive から ${docs.length} 件を履歴に追加しました`;
-      }
-    }
-
-    // 実際に Google Drive Picker を開く
-    async function openGoogleDrivePicker(){
-      const clientId = localStorage.getItem(GAPI_CLIENT_ID_KEY) || '';
-      const apiKey = localStorage.getItem(GAPI_API_KEY_KEY) || '';
-      if (!clientId || !apiKey) {
-        alert('まずページ右上の「API 設定」から Client ID と API Key を保存してください。');
-        return;
-      }
-
-      try {
-        // Ensure gapi / gsi / picker loaded
-        await ensureGsiJs();
-        await ensureGapiJs();
-        await ensurePickerApi();
-      } catch (err) {
-        console.warn('Google API 読み込みエラー', err);
-        alert('Google API の読み込みに失敗しました。ネットワークやブロックを確認してください。');
-        return;
-      }
-
-      // init token client and request token interactively
-      initTokenClientIfNeeded(clientId);
-
-      if (!tokenClient) {
-        alert('トークンクライアントの初期化に失敗しました。gsi ライブラリが読み込まれているか確認してください。');
-        return;
-      }
-
-      // Request access token
-      await new Promise((resolve, reject) => {
-        tokenClient.callback = async (resp) => {
-          if (resp.error) {
-            console.warn('token error', resp);
-            alert('Google の認可に失敗しました: ' + (resp.error));
-            reject(new Error(resp.error));
-            return;
-          }
-          gdriveOauthToken = resp.access_token;
-          // Build and display the picker
-          try {
-            const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-              .setMimeTypes('video/*')
-              .setMode(google.picker.DocsViewMode.VIDEO);
-
-            const picker = new google.picker.PickerBuilder()
-              .setAppId(clientId) // appId sometimes optional; set clientId as identifier
-              .setDeveloperKey(apiKey)
-              .setOAuthToken(gdriveOauthToken)
-              .addView(view)
-              .setCallback((data) => handlePickerResponse(data, gdriveOauthToken))
-              .build();
-            picker.setVisible(true);
-            resolve();
-          } catch (pickerErr) {
-            console.warn('picker build error', pickerErr);
-            alert('Picker を開けませんでした: ' + (pickerErr.message || pickerErr));
-            reject(pickerErr);
-          }
-        };
-
-        // this will prompt the user for consent if needed
-        tokenClient.requestAccessToken({prompt: 'consent'});
-      });
-    }
-
-    // Click handler for Google Drive pick button
-    gdrivePickBtn.addEventListener('click', (e)=>{
-      e.stopPropagation();
-      openGoogleDrivePicker().catch(err => {
-        console.warn('openGoogleDrivePicker error', err);
-      });
-    });
-
-    // reload previous settings on startup
-    (function initSavedGApi(){
-      loadSavedGApiSettings();
-    })();
 
   </script>
 </body>
