@@ -94,6 +94,12 @@
     #pickerScreen h1,#pickerScreen p{color:inherit}
     #pickerScreen .file-info{color:#444}
 
+    /* ドラッグオーバー時の視覚的フィードバック（最小限） */
+    #pickerScreen.dragover{
+      outline: 3px dashed rgba(11,116,255,0.65);
+      box-shadow: 0 6px 24px rgba(11,116,255,0.06);
+    }
+
     /* 履歴リスト（最小限のスタイル） */
     .history-wrap{width:100%;max-width:880px;margin-top:0;/* fixed 化により余白不要 */margin-bottom:8px}
     .history-head{
@@ -379,7 +385,8 @@
       <!-- 要望に合わせてボタンを段落の直下に配置 -->
       <div style="margin-top:8px">
         <button id="pickBtn" class="btn primary" type="button" aria-label="ファイルを取得">ファイルを取得</button>
-        <input id="fileInput" type="file" accept="video/*" style="display:none" />
+        <!-- multiple を追加して複数選択をサポート -->
+        <input id="fileInput" type="file" accept="video/*" multiple style="display:none" />
       </div>
     </div>
 
@@ -1116,6 +1123,7 @@
     async function renderHistory(){
       historyList.innerHTML = '';
       const items = await getHistory();
+
       const finalSorted = sortItems(items || []);
 
       // 選択中カテゴリでフィルタ
@@ -1667,34 +1675,88 @@
     // pickBtn: 既存の <input> を開く
     pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
 
+    /**
+     * 変更点（要件反映）:
+     * - 複数選択をサポート (input に multiple を追加済み)
+     * - ファイル選択後に「自動でビューアに遷移しない」ようにし、選択したファイルを履歴に追加する動作に変更
+     * - ドラッグ＆ドロップでアップロード（履歴に追加）できるように pickerScreen にイベントを追加
+     */
+
+    // ファイル選択（複数対応）：選択したファイルを履歴に追加し画面遷移しない
     fileInput.addEventListener('change', async () => {
-      const f = fileInput.files && fileInput.files[0];
-      if (!f) {
+      const files = fileInput.files;
+      if (!files || files.length === 0) {
         fileNameEl.textContent = 'まだファイルが選択されていません';
         return;
       }
 
-      fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
-
-      if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
-        currentObjectUrl = null;
+      // 表示は簡易に（単数は詳細、複数は個数表示）
+      if (files.length === 1) {
+        const f = files[0];
+        fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+      } else {
+        fileNameEl.textContent = `${files.length} 個のファイルが選択されました`;
       }
 
-      currentObjectUrl = URL.createObjectURL(f);
-      video.src = currentObjectUrl;
-      video.load();
-      video.playbackRate = 1.0;
+      // 保存処理（順次）
+      const savedIds = [];
+      for (const f of Array.from(files)) {
+        try {
+          const id = await saveFileToHistory(f);
+          if (id) savedIds.push(id);
+        } catch (err) {
+          console.warn('ファイル保存中にエラー', err);
+        }
+      }
 
-      markers = [];
-      clearMarkerElements();
+      // 入力をクリアして同じファイルを再度選べるようにする
+      try { fileInput.value = ''; } catch(e){}
 
-      const hid = await saveFileToHistory(f);
-      currentHistoryId = hid || null;
+      // 最後に履歴を更新（自動でビューアへは遷移しない）
+      if (savedIds.length > 0) {
+        currentHistoryId = savedIds[savedIds.length - 1];
+      }
       renderHistory();
-
-      await openViewer(true);
     });
+
+    // ドラッグ＆ドロップ対応: pickerScreen 上でのドロップを受けてファイルを履歴へ追加
+    pickerScreen.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+      pickerScreen.classList.add('dragover');
+    }, {passive:false});
+    pickerScreen.addEventListener('dragleave', (e) => {
+      pickerScreen.classList.remove('dragover');
+    });
+    pickerScreen.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      pickerScreen.classList.remove('dragover');
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const files = dt.files;
+      if (!files || files.length === 0) return;
+
+      if (files.length === 1) {
+        const f = files[0];
+        fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+      } else {
+        fileNameEl.textContent = `${files.length} 個のファイルをドロップしました`;
+      }
+
+      const savedIds = [];
+      for (const f of Array.from(files)) {
+        try {
+          const id = await saveFileToHistory(f);
+          if (id) savedIds.push(id);
+        } catch (err) {
+          console.warn('ドロップファイル保存失敗', err);
+        }
+      }
+      if (savedIds.length > 0) {
+        currentHistoryId = savedIds[savedIds.length - 1];
+      }
+      renderHistory();
+    }, {passive:false});
 
     async function openFromHistory(id){
       const entry = await getEntry(id);
