@@ -89,6 +89,43 @@
       box-sizing:border-box;
     }
 
+    /* API 設定ボタン（reloadBtn の下） */
+    #apiSettingsBtn {
+      position: absolute;
+      top: calc(12px + var(--ctrl-size) * 0.66 + 8px); /* reload の下 */
+      right: 12px;
+      z-index:1200;
+      height: calc(var(--ctrl-size) * 0.60);
+      min-width: calc(var(--ctrl-size) * 0.60);
+      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
+      font-size: calc(var(--ctrl-font) * 0.70);
+      border-radius: calc(var(--ctrl-radius) * 0.9);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+      background:#fff;
+      color:#111;
+      border:1px solid #e0e0e0;
+    }
+
+    /* API 設定モーダル（右上のボタンから） */
+    #apiSettingsModal {
+      position: fixed;
+      right: 12px;
+      top: calc(12px + var(--ctrl-size) * 1.5 + 22px);
+      z-index: 1300;
+      display: none;
+      background:#fff;
+      color:#111;
+      border-radius:8px;
+      padding:10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.24);
+      width:320px;
+    }
+    #apiSettingsModal label { display:block;font-size:12px;margin-top:8px;color:#333 }
+    #apiSettingsModal input[type="text"]{width:100%;padding:6px;border-radius:6px;border:1px solid #ddd;box-sizing:border-box}
+
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
     #pickerScreen h1,#pickerScreen p{color:inherit}
@@ -372,14 +409,32 @@
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
 
+    <!-- API 設定ボタン（reload の下） -->
+    <button id="apiSettingsBtn" class="btn" type="button" title="APIキー・Client ID の設定" aria-label="API設定">API設定</button>
+
+    <!-- API 設定モーダル（右上） -->
+    <div id="apiSettingsModal" role="dialog" aria-modal="false" aria-hidden="true">
+      <div style="font-weight:700">Google API 設定</div>
+      <div style="font-size:12px;color:#666;margin-top:6px">Google Drive から読み込むには API Key と OAuth Client ID が必要です。ここに保存するとローカルストレージにのみ保持されます。</div>
+      <label for="apiKeyInput">API Key</label>
+      <input id="apiKeyInput" type="text" placeholder="API Key を入力してください" />
+      <label for="clientIdInput">OAuth Client ID</label>
+      <input id="clientIdInput" type="text" placeholder="Client ID を入力してください（例: xxxxx.apps.googleusercontent.com）" />
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+        <button id="saveApiSettings" class="small-btn">保存</button>
+        <button id="clearApiSettings" class="small-btn">クリア</button>
+      </div>
+    </div>
+
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
-      <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、自動で動画画面に遷移します）。</p>
+      <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください（選択後、履歴に追加されます）。</p>
 
       <!-- 要望に合わせてボタンを段落の直下に配置 -->
-      <div style="margin-top:8px">
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap">
         <button id="pickBtn" class="btn primary" type="button" aria-label="ファイルを取得">ファイルを取得</button>
-        <input id="fileInput" type="file" accept="video/*" style="display:none" />
+        <input id="fileInput" type="file" accept="video/*" style="display:none" multiple />
+        <button id="driveBtn" class="btn" type="button" aria-label="Google Drive から読み込む">Google Drive から読み込む</button>
       </div>
     </div>
 
@@ -503,6 +558,15 @@
     const fileNameEl = document.getElementById('fileName');
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
+
+    const apiSettingsBtn = document.getElementById('apiSettingsBtn');
+    const apiSettingsModal = document.getElementById('apiSettingsModal');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const clientIdInput = document.getElementById('clientIdInput');
+    const saveApiSettings = document.getElementById('saveApiSettings');
+    const clearApiSettings = document.getElementById('clearApiSettings');
+
+    const driveBtn = document.getElementById('driveBtn');
 
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
@@ -764,7 +828,7 @@
       }
       const r = (h & 0xff0000) >> 16;
       const g = (h & 0x00ff00) >> 8;
-      const b = (h & 0x0000ff);
+      const b = (h & 0x000ff);
       const mix = 90;
       const rr = Math.round((r + mix) / 2);
       const gg = Math.round((g + mix) / 2);
@@ -1447,10 +1511,7 @@
       const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
       const name = '新しい項目';
       modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
-      // re-render modal
-      // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
-      // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
-      // quick re-render:
+      // re-render modal (軽い再描画)
       (function renderModalRows(){
         categoryEditorContent.innerHTML = '';
         if (!modalUsers || modalUsers.length === 0){
@@ -1667,33 +1728,44 @@
     // pickBtn: 既存の <input> を開く
     pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
 
+    // ファイル選択: 複数ファイルに対応するよう変更。選択後は「履歴に追加」して画面遷移しない。
     fileInput.addEventListener('change', async () => {
-      const f = fileInput.files && fileInput.files[0];
-      if (!f) {
+      const files = fileInput.files;
+      if (!files || files.length === 0) {
         fileNameEl.textContent = 'まだファイルが選択されていません';
         return;
       }
 
-      fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+      // show brief summary
+      if (files.length === 1) {
+        const f = files[0];
+        fileNameEl.textContent = `${f.name} (${Math.round(f.size/1024)} KB) を履歴に追加しました`;
+      } else {
+        fileNameEl.textContent = `${files.length} 個のファイルを履歴に追加しました`;
+      }
 
+      // revoke any previous object URL references (we are not auto-opening)
       if (currentObjectUrl) {
-        URL.revokeObjectURL(currentObjectUrl);
+        try { URL.revokeObjectURL(currentObjectUrl); } catch(e){}
         currentObjectUrl = null;
       }
 
-      currentObjectUrl = URL.createObjectURL(f);
-      video.src = currentObjectUrl;
-      video.load();
-      video.playbackRate = 1.0;
-
-      markers = [];
-      clearMarkerElements();
-
-      const hid = await saveFileToHistory(f);
-      currentHistoryId = hid || null;
+      // Add each file to history sequentially to avoid quota spikes
+      const addedIds = [];
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        try {
+          const hid = await saveFileToHistory(f);
+          if (hid) addedIds.push(hid);
+        } catch (err) {
+          console.warn('履歴保存中にエラー', err);
+        }
+      }
+      currentHistoryId = addedIds.length ? addedIds[addedIds.length - 1] : null;
+      // 別画面へ遷移せず履歴のみ再描画
       renderHistory();
-
-      await openViewer(true);
+      // reset input so same file can be selected later
+      fileInput.value = '';
     });
 
     async function openFromHistory(id){
@@ -1986,8 +2058,28 @@
     * 以下は履歴保存処理（saveFileToHistory）です。
     * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
     * （サムネイル生成のみ削除済み）
+    *
+    * 変更点:
+    * - 引数は File 単体または File の配列に対応
+    * - 複数ファイルは順に保存される
     */
-    async function saveFileToHistory(file){
+    async function saveFileToHistory(fileOrFiles){
+      // 配列を受け取った場合、順次処理してIDの配列を返す
+      if (Array.isArray(fileOrFiles) || (fileOrFiles instanceof FileList)) {
+        const files = Array.from(fileOrFiles);
+        const ids = [];
+        for (const f of files) {
+          try {
+            const id = await saveFileToHistory(f);
+            if (id) ids.push(id);
+          } catch (err) {
+            console.warn('ファイル保存中にエラー', err);
+          }
+        }
+        return ids;
+      }
+
+      const file = fileOrFiles;
       try{
         const db = await openDB();
 
@@ -2094,6 +2186,209 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
+
+    /******************************************************************
+     * Google Drive (Picker) integration
+     * - API Key と Client ID は右上の「API設定」ボタンで入力して保存します
+     * - 設定が無い場合はボタンは簡易的に説明を表示します
+     * - 選択したファイルは Drive API 経由でダウンロードし、IndexedDB に保存します
+     ******************************************************************/
+    const GOOGLE_API_KEY_KEY = 'GOOGLE_API_KEY';
+    const GOOGLE_CLIENT_ID_KEY = 'GOOGLE_CLIENT_ID';
+    const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+
+    function loadGoogleSettings(){
+      return {
+        apiKey: localStorage.getItem(GOOGLE_API_KEY_KEY) || '',
+        clientId: localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || ''
+      };
+    }
+    function saveGoogleSettings(apiKey, clientId){
+      if (apiKey) localStorage.setItem(GOOGLE_API_KEY_KEY, apiKey);
+      else localStorage.removeItem(GOOGLE_API_KEY_KEY);
+      if (clientId) localStorage.setItem(GOOGLE_CLIENT_ID_KEY, clientId);
+      else localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+    }
+    function clearGoogleSettings(){
+      localStorage.removeItem(GOOGLE_API_KEY_KEY);
+      localStorage.removeItem(GOOGLE_CLIENT_ID_KEY);
+    }
+
+    // API 設定 UI
+    apiSettingsBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const s = loadGoogleSettings();
+      apiKeyInput.value = s.apiKey || '';
+      clientIdInput.value = s.clientId || '';
+      apiSettingsModal.style.display = apiSettingsModal.style.display === 'block' ? 'none' : 'block';
+      apiSettingsModal.setAttribute('aria-hidden', apiSettingsModal.style.display === 'none' ? 'true' : 'false');
+    });
+    saveApiSettings.addEventListener('click', ()=>{
+      const apiKey = apiKeyInput.value.trim();
+      const clientId = clientIdInput.value.trim();
+      saveGoogleSettings(apiKey, clientId);
+      alert('保存しました（ローカルストレージにのみ保存されます）。Google Drive ボタンをもう一度押してください。');
+      apiSettingsModal.style.display = 'none';
+      apiSettingsModal.setAttribute('aria-hidden','true');
+    });
+    clearApiSettings.addEventListener('click', ()=>{
+      if (!confirm('保存されている Google API 設定をクリアしますか？')) return;
+      clearGoogleSettings();
+      apiKeyInput.value = '';
+      clientIdInput.value = '';
+      alert('クリアしました。');
+      apiSettingsModal.style.display = 'none';
+      apiSettingsModal.setAttribute('aria-hidden','true');
+    });
+
+    // 動的に gapi を読み込み（1 回だけ）
+    let gapiLoaded = false;
+    function loadGapiScript(){
+      return new Promise((resolve, reject) => {
+        if (gapiLoaded || window.gapi) { gapiLoaded = true; return resolve(); }
+        const s = document.createElement('script');
+        s.src = 'https://apis.google.com/js/api.js';
+        s.onload = () => {
+          gapiLoaded = true;
+          resolve();
+        };
+        s.onerror = (e) => reject(e);
+        document.head.appendChild(s);
+      });
+    }
+
+    // Drive ファイルをダウンロード（Bearer token 必須）
+    async function downloadDriveFile(fileId, mimeType, oauthToken){
+      // Drive API v3: GET /files/{fileId}?alt=media
+      const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`;
+      const resp = await fetch(url, { method: 'GET', headers: { Authorization: 'Bearer ' + oauthToken } });
+      if (!resp.ok) throw new Error('Drive fetch failed: ' + resp.status);
+      const blob = await resp.blob();
+      // convert to File if available, to preserve name/type
+      let filename = 'downloaded';
+      try {
+        // try to get metadata for filename via files.get?fields=name
+        // But Picker returns name already; we pass name where appropriate.
+      } catch(e){}
+      return blob;
+    }
+
+    // Picker のコールバック
+    async function pickerCallback(data, oauthToken){
+      if (data.action === google.picker.Action.PICKED) {
+        const docs = data.docs || [];
+        if (!docs || docs.length === 0) return;
+        // for each doc, fetch via Drive API
+        const added = [];
+        for (const d of docs){
+          try {
+            // d has: id, name, mimeType, sizeBytes (maybe)
+            const fileId = d.id;
+            const name = d.name || ('drive_' + fileId);
+            const mime = d.mimeType || 'application/octet-stream';
+            // download as blob
+            const blob = await downloadDriveFile(fileId, mime, oauthToken);
+            // create File object if possible
+            let fileObj;
+            try {
+              fileObj = new File([blob], name, { type: mime });
+            } catch (e) {
+              // File constructor may not be available in some contexts; fallback to blob with custom name property
+              blob.name = name;
+              fileObj = blob;
+            }
+            const hid = await saveFileToHistory(fileObj);
+            added.push(hid);
+          } catch (err) {
+            console.warn('Drive からの取得に失敗', err);
+            alert('Drive からの取得に失敗しました: ' + (err && err.message ? err.message : err));
+          }
+        }
+        // 更新して終了（遷移しない）
+        if (added.length > 0) {
+          fileNameEl.textContent = `${added.length} 件を履歴に追加しました（Drive）`;
+          renderHistory();
+        }
+      }
+    }
+
+    // Drive ボタンの挙動: 設定確認 -> gapi 読込 -> 認可 -> Picker 表示
+    driveBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const s = loadGoogleSettings();
+      if (!s.apiKey || !s.clientId) {
+        if (confirm('Google API Key / Client ID が未設定です。設定しますか？（設定後に Drive から読み込めます）')) {
+          apiSettingsBtn.click();
+        }
+        return;
+      }
+
+      driveBtn.disabled = true;
+      driveBtn.textContent = '読み込み中...';
+
+      try {
+        await loadGapiScript();
+        // load auth and picker
+        await new Promise((resolve, reject) => {
+          gapi.load('client:auth2', { callback: resolve, onerror: reject });
+        });
+        // init client with apiKey (for picker developerKey)
+        await gapi.client.init({
+          apiKey: s.apiKey,
+        }).catch((err)=>{
+          // ignore if fails; developerKey is used directly later
+        });
+
+        // authorize (interactive)
+        const authResp = await new Promise((resolve, reject) => {
+          // gapi.auth2 flows
+          if (gapi.auth2) {
+            const auth2 = gapi.auth2.getAuthInstance() || gapi.auth2.init({ client_id: s.clientId, scope: DRIVE_SCOPE });
+            auth2.signIn({ scope: DRIVE_SCOPE }).then(user => {
+              const authResponse = user.getAuthResponse(true);
+              resolve(authResponse);
+            }).catch(err => reject(err));
+          } else {
+            // fallback to older authorize
+            gapi.auth.authorize(
+              { client_id: s.clientId, scope: DRIVE_SCOPE, immediate: false },
+              function(resp){ if (resp && !resp.error) resolve(resp); else reject(resp); }
+            );
+          }
+        });
+
+        const oauthToken = authResp && (authResp.access_token || authResp.accessToken || authResp.accessToken) ? (authResp.access_token || authResp.accessToken) : (authResp.accessToken || authResp.access_token);
+        if (!oauthToken) {
+          throw new Error('OAuth トークンが取得できませんでした');
+        }
+
+        // load picker
+        await new Promise((resolve, reject) => {
+          gapi.load('picker', { callback: resolve, onerror: reject });
+        });
+
+        // Build DocsView limited to video MIME types
+        const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
+                      .setMimeTypes('video/*')
+                      .setSelectFolderEnabled(false)
+                      .setIncludeFolders(false);
+
+        const picker = new google.picker.PickerBuilder()
+              .addView(view)
+              .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+              .setOAuthToken(oauthToken)
+              .setDeveloperKey(s.apiKey)
+              .setCallback(function(data){ pickerCallback(data, oauthToken); })
+              .build();
+        picker.setVisible(true);
+      } catch (err) {
+        console.warn('Drive picker エラー', err);
+        alert('Google Drive の読み込みに失敗しました。API 設定とネットワークを確認してください。');
+      } finally {
+        driveBtn.disabled = false;
+        driveBtn.textContent = 'Google Drive から読み込む';
+      }
+    });
 
   </script>
 </body>
