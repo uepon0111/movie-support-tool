@@ -424,8 +424,9 @@
           </div>
         </div>
 
-        <!-- 右側: 履歴を消去 -->
-        <div>
+        <!-- 右側: 履歴件数表示 + 履歴を消去 -->
+        <div style="display:flex;align-items:center;gap:8px">
+          <div id="historyCount" aria-live="polite" style="color:#666">0 / 0 件表示</div>
           <button id="clearHistoryBtn" class="small-btn">履歴を消去</button>
         </div>
       </div>
@@ -554,6 +555,8 @@
     const modalBackdrop = document.getElementById('modalBackdrop');
     const categoryEditorContent = document.getElementById('categoryEditorContent');
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
+
+    const historyCountEl = document.getElementById('historyCount');
 
     let currentObjectUrl = null;
     let currentHistoryId = null;
@@ -771,7 +774,7 @@
       }
       const r = (h & 0xff0000) >> 16;
       const g = (h & 0x00ff00) >> 8;
-      const b = (h & 0x0000ff);
+      const b = (h & 0x000ff);
       const mix = 90;
       const rr = Math.round((r + mix) / 2);
       const gg = Math.round((g + mix) / 2);
@@ -1138,6 +1141,16 @@
       });
 
       const final = filtered;
+
+      // --- NEW: update history count display ---
+      try {
+        const total = Array.isArray(items) ? items.length : 0;
+        const shown = Array.isArray(final) ? final.length : 0;
+        if (historyCountEl) {
+          historyCountEl.textContent = `${shown} / ${total} 件表示`;
+        }
+      } catch (e) { /* ignore */ }
+      // --- end new ---
 
       if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
 
