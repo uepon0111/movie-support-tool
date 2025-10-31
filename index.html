@@ -749,6 +749,53 @@
       });
     }
 
+    // --- 新規追加: マーカー保存関連 ---
+    function markersEqual(a,b){
+      if (!Array.isArray(a)) a = [];
+      if (!Array.isArray(b)) b = [];
+      if (a.length !== b.length) return false;
+      for (let i=0;i<a.length;i++){
+        if (!isFinite(a[i]) || !isFinite(b[i])) return false;
+        if (Math.abs(a[i] - b[i]) > 1e-6) return false;
+      }
+      return true;
+    }
+
+    async function updateEntryMarkers(id, newMarkers){
+      const db = await openDB();
+      return new Promise((resolve,reject)=>{
+        const tx = db.transaction(STORE_NAME,'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(Number(id));
+        req.onsuccess = async ()=>{
+          const val = req.result;
+          if (!val) {
+            try { await waitForTransactionComplete(tx); } catch(e){}
+            resolve(false);
+            return;
+          }
+          const current = Array.isArray(val.markers) ? val.markers : (Array.isArray(val.markerTimes) ? val.markerTimes : []);
+          if (markersEqual(current, newMarkers)) {
+            // 変更なし -> no-op
+            try { await waitForTransactionComplete(tx); } catch(e){}
+            resolve(true);
+            return;
+          }
+          val.markers = Array.isArray(newMarkers) ? newMarkers.slice() : [];
+          // cleanup legacy keys optionally
+          if (val.hasOwnProperty('markerTimes')) delete val.markerTimes;
+          const putReq = store.put(val);
+          putReq.onsuccess = ()=> {
+            waitForTransactionComplete(tx).then(()=>resolve(true)).catch(reject);
+          };
+          putReq.onerror = ()=>reject(putReq.error);
+        };
+        req.onerror = ()=>reject(req.error);
+      });
+    }
+
+    // --- end マーカー保存関連 ---
+
     // 新規: カテゴリ関連
     const CATS_KEY = 'videoHistoryCategories';
     // 内部固定ID: 未分類（削除不可）と全て（表示用）
@@ -1788,7 +1835,11 @@
       currentHistoryId = entry.id;
       fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
 
-      markers = [];
+      // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
+      markers = Array.isArray(entry.markers) ? entry.markers.slice() :
+                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+      // --- end change ---
+
       clearMarkerElements();
 
       await openViewer(true);
@@ -1859,8 +1910,22 @@
       }
     }
 
-    backBtn.addEventListener('click', (e) => {
+    backBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
+
+      // --- 追加: 現在のマーカーを DB に保存（ファイル単位） ---
+      try {
+        if (currentHistoryId != null) {
+          // ensure markers array is normalized numbers
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          await updateEntryMarkers(currentHistoryId, normalized);
+        }
+      } catch (err) {
+        console.warn('マーカーの保存に失敗しました', err);
+        // 保存失敗でも画面を戻す（という仕様）
+      }
+      // --- 保存終了 ---
+
       video.pause();
       video.removeAttribute('src');
       video.load();
@@ -2107,7 +2172,8 @@
           blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
           createdAt: Date.now(),
           note: '', // 新規: 補足フィールドを追加（空文字で初期化）
-          categoryIds: assignCatArr // 複数対応: 空配列=未分類
+          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
+          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
         };
 
         try {
@@ -2173,3 +2239,4 @@
   </script>
 </body>
 </html>
+
