@@ -361,6 +361,13 @@
     .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
     .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
 
+    /* 検索バー用（history search） */
+    .history-search{display:flex;gap:8px;align-items:center;margin:8px 0 8px}
+    .history-search input[type="search"]{
+      flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;font-size:14px;background:#fff;
+    }
+    .history-search .clear-btn{padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
+
     @media (max-width:480px){
       .overlay-right{ top: calc(8px + var(--ctrl-size) + 6px); }
       .seek::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px}
@@ -430,6 +437,13 @@
           <button id="clearHistoryBtn" class="small-btn">履歴を消去</button>
         </div>
       </div>
+
+      <!-- 検索バー：名前順、昇順、全て、項目編集などの行の下に配置 -->
+      <div class="history-search" aria-label="履歴検索">
+        <input id="historySearch" type="search" placeholder="履歴を検索（タイトルのみ。英字は大文字小文字を区別しません。ひらがな/カタカナは同一視します）" aria-label="履歴のタイトルを検索" />
+        <button id="clearSearchBtn" class="clear-btn" title="検索をクリア">クリア</button>
+      </div>
+
       <div class="history-list" id="historyList" aria-live="polite"></div>
     </div>
   </main>
@@ -557,6 +571,10 @@
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
 
     const historyCountEl = document.getElementById('historyCount');
+
+    // search elements
+    const historySearch = document.getElementById('historySearch');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
 
     let currentObjectUrl = null;
     let currentHistoryId = null;
@@ -1082,6 +1100,25 @@
       return filename;
     }
 
+    // 文字列を検索用に正規化する
+    // - NFKC 正規化（半角全角等を揃える）
+    // - ASCII は小文字化
+    // - カタカナをひらがなに変換（ひらがな/カタカナを同一視）
+    function katakanaToHiragana(s){
+      // U+30A1..U+30F6 -> subtract 0x60 to map to U+3041..U+3096
+      return s.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    }
+    function normalizeForSearch(s){
+      if (!s) return '';
+      try {
+        let t = String(s);
+        t = t.normalize('NFKC'); // 半角全角を統一
+        t = t.toLowerCase(); // 英字の大小を無視
+        t = katakanaToHiragana(t); // カタカナ→ひらがな
+        return t;
+      } catch (err) { return String(s).toLowerCase(); }
+    }
+
     // カテゴリ編集モーダルの描画（並び替えボタンを追加）
     function openCategoryEditor(){
       // modalUsers をローカルに用意して編集用に使う（保存は閉じる時に一括）
@@ -1178,13 +1215,30 @@
 
       // 選択中カテゴリでフィルタ
       const selectedCat = categorySelect.value || ALL_ID;
+      const searchTerm = (historySearch && historySearch.value) ? historySearch.value.trim() : '';
+      const qnorm = normalizeForSearch(searchTerm);
+
       const filtered = finalSorted.filter(item => {
-        if (selectedCat === ALL_ID) return true;
-        const cids = Array.isArray(item.categoryIds) ? item.categoryIds : (item.categoryId ? [item.categoryId] : []);
-        if (selectedCat === UNCATEGORIZED_ID) {
-          return (!cids || cids.length === 0);
+        if (selectedCat === ALL_ID) {
+          // pass
+        } else {
+          const cids = Array.isArray(item.categoryIds) ? item.categoryIds : (item.categoryId ? [item.categoryId] : []);
+          if (selectedCat === UNCATEGORIZED_ID) {
+            if (cids && cids.length > 0) return false;
+          } else {
+            if (!cids || !cids.includes(selectedCat)) return false;
+          }
         }
-        return cids.includes(selectedCat);
+
+        // 検索条件（タイトルのみ）: 補足（note）は検索対象に含めない
+        if (qnorm && qnorm.length > 0) {
+          const title = stripExtension(item.name || '');
+          const tnorm = normalizeForSearch(title);
+          // 部分一致
+          if (!tnorm.includes(qnorm)) return false;
+        }
+
+        return true;
       });
 
       const final = filtered;
@@ -1501,6 +1555,23 @@
     categorySelect.addEventListener('change', ()=>{
       renderHistory();
     });
+
+    // 検索イベント
+    if (historySearch) {
+      historySearch.addEventListener('input', (e)=>{
+        renderHistory();
+      });
+    }
+    if (clearSearchBtn) {
+      clearSearchBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if (historySearch) {
+          historySearch.value = '';
+          historySearch.focus();
+          renderHistory();
+        }
+      });
+    }
 
     // 項目編集モーダル
     editCategoryBtn.addEventListener('click', (e)=>{
@@ -2239,4 +2310,3 @@
   </script>
 </body>
 </html>
-
