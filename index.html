@@ -274,6 +274,7 @@
     .seek::-webkit-slider-thumb{
       -webkit-appearance:none;width:10px;height:10px;border-radius:50%;margin-top:-3px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.4);
     }
+    .seek::-webkit-slider-thumb{width:10px;height:10px;border-radius:50%}
     .seek::-moz-range-track{height:4px;border-radius:4px;background:rgba(255,255,255,0.14);}
     .seek::-moz-range-progress{background:rgba(11,116,255,0.9);height:4px;border-radius:4px;}
     .seek::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#fff;border:0;box-shadow:0 1px 2px rgba(0,0,0,0.4);}
@@ -814,7 +815,7 @@
 
     // --- end マーカー保存関連 ---
 
-    // 新規: カテゴリ関連
+    // --- 新規: カテゴリ関連 ---
     const CATS_KEY = 'videoHistoryCategories';
     // 内部固定ID: 未分類（削除不可）と全て（表示用）
     const UNCATEGORIZED_ID = 'uncategorized';
@@ -880,6 +881,19 @@
     }
     function saveUserCategories(arr){
       try { localStorage.setItem(CATS_KEY, JSON.stringify(arr)); } catch(e){ console.warn('カテゴリ保存失敗', e); }
+    }
+
+    // ヘルパー: モーダル編集中の配列を保存して UI を更新するユーティリティ
+    function saveModalUsersAndRefresh(){
+      try {
+        if (Array.isArray(modalUsers)) {
+          saveUserCategories(modalUsers);
+        }
+      } catch (e) {
+        console.warn('modal save failed', e);
+      }
+      try { populateCategorySelect(); } catch(e){}
+      try { renderHistory(); } catch(e){}
     }
 
     // カテゴリリストを UI に反映（"全て" / "未分類" / ユーザ作成分）
@@ -1155,6 +1169,8 @@
                 modalUsers[idx-1] = modalUsers[idx];
                 modalUsers[idx] = tmp;
                 renderRows();
+                // immediate save on move
+                saveModalUsersAndRefresh();
               }
             });
             downBtn.addEventListener('click', (e)=>{
@@ -1164,6 +1180,8 @@
                 modalUsers[idx+1] = modalUsers[idx];
                 modalUsers[idx] = tmp;
                 renderRows();
+                // immediate save on move
+                saveModalUsersAndRefresh();
               }
             });
 
@@ -1176,12 +1194,16 @@
               const i = modalUsers.findIndex(x => x.id === c.id);
               if (i >= 0) modalUsers.splice(i, 1);
               renderRows();
+              // save modalUsers after deletion
+              saveModalUsersAndRefresh();
             });
 
             // live-edit name/color locally so that closing will pick up changes
             nameIn.addEventListener('input', (ev)=>{
               const i = modalUsers.findIndex(x => x.id === c.id);
               if (i >= 0) modalUsers[i].name = nameIn.value;
+              // immediate save on edit
+              saveModalUsersAndRefresh();
             });
             colorIn.addEventListener('input', (ev)=>{
               const i = modalUsers.findIndex(x => x.id === c.id);
@@ -1191,6 +1213,8 @@
               if (!isValidHexColor(v)) v = '#ffffff';
               v = expandHex(v);
               if (i >= 0) modalUsers[i].color = v;
+              // immediate save on color change
+              saveModalUsersAndRefresh();
             });
           });
         }
@@ -1586,10 +1610,10 @@
       const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
       const name = '';
       modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
+      // immediate save after adding
+      saveModalUsersAndRefresh();
+
       // re-render modal
-      // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
-      // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
-      // quick re-render:
       (function renderModalRows(){
         categoryEditorContent.innerHTML = '';
         if (!modalUsers || modalUsers.length === 0){
@@ -1618,6 +1642,7 @@
               modalUsers[idx-1] = modalUsers[idx];
               modalUsers[idx] = tmp;
               renderModalRows();
+              saveModalUsersAndRefresh();
             }
           });
           downBtn.addEventListener('click', (ev)=>{
@@ -1627,6 +1652,7 @@
               modalUsers[idx+1] = modalUsers[idx];
               modalUsers[idx] = tmp;
               renderModalRows();
+              saveModalUsersAndRefresh();
             }
           });
           delBtn.addEventListener('click', (ev)=>{
@@ -1636,10 +1662,12 @@
             const i = modalUsers.findIndex(x => x.id === c.id);
             if (i >= 0) modalUsers.splice(i,1);
             renderModalRows();
+            saveModalUsersAndRefresh();
           });
           nameIn.addEventListener('input', (ev)=>{
             const i = modalUsers.findIndex(x => x.id === c.id);
             if (i >= 0) modalUsers[i].name = nameIn.value;
+            saveModalUsersAndRefresh();
           });
           colorIn.addEventListener('input', (ev)=>{
             const i = modalUsers.findIndex(x => x.id === c.id);
@@ -1649,6 +1677,7 @@
             if (!isValidHexColor(v)) v = '#ffffff';
             v = expandHex(v);
             if (i >= 0) modalUsers[i].color = v;
+            saveModalUsersAndRefresh();
           });
         });
       })();
@@ -2137,6 +2166,14 @@
       markers.push(t);
       markers.sort((a,b)=>a-b);
       renderMarkers();
+
+      // 自動保存: 現在開いている履歴があれば即時保存
+      try {
+        if (currentHistoryId != null) {
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
+        }
+      } catch (err) { console.warn('marker add save err', err); }
     });
 
     function findPreviousMarkerIndex(referenceTime) {
@@ -2173,6 +2210,14 @@
       }
       markers.splice(idx, 1);
       renderMarkers();
+
+      // 自動保存: 削除後すぐに保存
+      try {
+        if (currentHistoryId != null) {
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
+        }
+      } catch (err) { console.warn('marker remove save err', err); }
     });
 
     function repositionMarkerLayer(){
