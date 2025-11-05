@@ -1211,27 +1211,14 @@
       historyList.innerHTML = '';
       const items = await getHistory();
 
-      // apply sorting first
       const finalSorted = sortItems(items || []);
-
-      // --- DEDUPE: 同一ファイル（name,size,lastModified）を1つにまとめる（ソート順を保持） ---
-      const seenSig = new Set();
-      const uniqueSorted = [];
-      for (const it of finalSorted){
-        const sig = `${it.name}:::${it.size}:::${String(it.lastModified || 0)}`;
-        if (!seenSig.has(sig)){
-          seenSig.add(sig);
-          uniqueSorted.push(it);
-        }
-      }
-      // --- end dedupe ---
 
       // 選択中カテゴリでフィルタ
       const selectedCat = categorySelect.value || ALL_ID;
       const searchTerm = (historySearch && historySearch.value) ? historySearch.value.trim() : '';
       const qnorm = normalizeForSearch(searchTerm);
 
-      const filtered = uniqueSorted.filter(item => {
+      const filtered = finalSorted.filter(item => {
         if (selectedCat === ALL_ID) {
           // pass
         } else {
@@ -1256,12 +1243,12 @@
 
       const final = filtered;
 
-      // --- NEW: update history count display (unique counts) ---
+      // --- NEW: update history count display ---
       try {
-        const totalUnique = Array.isArray(uniqueSorted) ? uniqueSorted.length : 0;
+        const total = Array.isArray(items) ? items.length : 0;
         const shown = Array.isArray(final) ? final.length : 0;
         if (historyCountEl) {
-          historyCountEl.textContent = `${shown} / ${totalUnique} 件表示`;
+          historyCountEl.textContent = `${shown} / ${total} 件表示`;
         }
       } catch (e) { /* ignore */ }
       // --- end new ---
@@ -2323,4 +2310,3 @@
   </script>
 </body>
 </html>
-
