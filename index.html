@@ -274,7 +274,6 @@
     .seek::-webkit-slider-thumb{
       -webkit-appearance:none;width:10px;height:10px;border-radius:50%;margin-top:-3px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.4);
     }
-    .seek::-webkit-slider-thumb{width:10px;height:10px;border-radius:50%;}
     .seek::-moz-range-track{height:4px;border-radius:4px;background:rgba(255,255,255,0.14);}
     .seek::-moz-range-progress{background:rgba(11,116,255,0.9);height:4px;border-radius:4px;}
     .seek::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#fff;border:0;box-shadow:0 1px 2px rgba(0,0,0,0.4);}
@@ -997,33 +996,6 @@
       return true;
     }
 
-    // --- 追加: 履歴表示用のデデュープ (同一ファイルをまとめる) ---
-    // キーは name + size + lastModified とし、createdAt が最大のエントリを残す
-    function entryUniqueKey(it){
-      const name = (it && typeof it.name === 'string') ? it.name : '';
-      const size = (it && typeof it.size !== 'undefined') ? String(it.size) : '';
-      const lm = (it && typeof it.lastModified !== 'undefined') ? String(it.lastModified) : '';
-      return `${name}|${size}|${lm}`;
-    }
-    function dedupeEntries(arr){
-      if (!Array.isArray(arr)) return [];
-      const map = new Map();
-      for (const it of arr){
-        const k = entryUniqueKey(it);
-        if (!map.has(k)) {
-          map.set(k, it);
-        } else {
-          const prev = map.get(k);
-          // keep the one with larger createdAt (more recent)
-          if ((it && it.createdAt ? it.createdAt : 0) > (prev && prev.createdAt ? prev.createdAt : 0)) {
-            map.set(k, it);
-          }
-        }
-      }
-      return Array.from(map.values());
-    }
-    // --- end デデュープ ---
-
     // エントリのカテゴリを更新（newCategoryId: string | string[]）
     // 改善: 同じ内容なら書き込みを行わないガード + 簡易リトライを導入
     async function updateEntryCategory(id, newCategoryId){
@@ -1239,14 +1211,27 @@
       historyList.innerHTML = '';
       const items = await getHistory();
 
+      // apply sorting first
       const finalSorted = sortItems(items || []);
+
+      // --- DEDUPE: 同一ファイル（name,size,lastModified）を1つにまとめる（ソート順を保持） ---
+      const seenSig = new Set();
+      const uniqueSorted = [];
+      for (const it of finalSorted){
+        const sig = `${it.name}:::${it.size}:::${String(it.lastModified || 0)}`;
+        if (!seenSig.has(sig)){
+          seenSig.add(sig);
+          uniqueSorted.push(it);
+        }
+      }
+      // --- end dedupe ---
 
       // 選択中カテゴリでフィルタ
       const selectedCat = categorySelect.value || ALL_ID;
       const searchTerm = (historySearch && historySearch.value) ? historySearch.value.trim() : '';
       const qnorm = normalizeForSearch(searchTerm);
 
-      const filtered = finalSorted.filter(item => {
+      const filtered = uniqueSorted.filter(item => {
         if (selectedCat === ALL_ID) {
           // pass
         } else {
@@ -1269,22 +1254,19 @@
         return true;
       });
 
-      // --- NEW: デデュープ処理（同一ファイルをまとめる） ---
-      const uniqueAll = dedupeEntries(items || []);
-      const uniqueFiltered = dedupeEntries(filtered || []);
-      // --- end new ---
+      const final = filtered;
 
-      // --- NEW: update history count display (ユニーク数表示) ---
+      // --- NEW: update history count display (unique counts) ---
       try {
-        const total = Array.isArray(uniqueAll) ? uniqueAll.length : 0;
-        const shown = Array.isArray(uniqueFiltered) ? uniqueFiltered.length : 0;
+        const totalUnique = Array.isArray(uniqueSorted) ? uniqueSorted.length : 0;
+        const shown = Array.isArray(final) ? final.length : 0;
         if (historyCountEl) {
-          historyCountEl.textContent = `${shown} / ${total} 件表示`;
+          historyCountEl.textContent = `${shown} / ${totalUnique} 件表示`;
         }
       } catch (e) { /* ignore */ }
       // --- end new ---
 
-      if (!uniqueFiltered || uniqueFiltered.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
+      if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
 
       // カテゴリ一覧を入手して移動セレクトに使うため整形
       const users = loadUserCategories();
@@ -1295,7 +1277,7 @@
       for (const c of users){ catMap[c.id] = {name:c.name, color: c.color || '#ffffff'}; }
 
       // 履歴を表示（サムネイルは読み込まず非表示）
-      for (const it of uniqueFiltered){
+      for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
 
@@ -1566,236 +1548,236 @@
     }
 
     sortBySelect.addEventListener('change', ()=>{
-     sortSettings.by = sortBySelect.value;
-     saveSortSettings(sortSettings);
-     renderHistory();
+      sortSettings.by = sortBySelect.value;
+      saveSortSettings(sortSettings);
+      renderHistory();
     });
     sortOrderSelect.addEventListener('change', ()=>{
-     sortSettings.order = sortOrderSelect.value;
-     saveSortSettings(sortSettings);
-     renderHistory();
+      sortSettings.order = sortOrderSelect.value;
+      saveSortSettings(sortSettings);
+      renderHistory();
     });
 
     clearHistoryBtn.addEventListener('click', async ()=>{
-     if (!confirm('履歴を全て消去しますか？')) return;
-     await clearHistory();
-     renderHistory();
+      if (!confirm('履歴を全て消去しますか？')) return;
+      await clearHistory();
+      renderHistory();
     });
 
     // カテゴリ選択の変更で再描画
     categorySelect.addEventListener('change', ()=>{
-     renderHistory();
+      renderHistory();
     });
 
     // 検索イベント
     if (historySearch) {
-     historySearch.addEventListener('input', (e)=>{
-      renderHistory();
-     });
+      historySearch.addEventListener('input', (e)=>{
+        renderHistory();
+      });
     }
     if (clearSearchBtn) {
-     clearSearchBtn.addEventListener('click', (e)=>{
-       e.stopPropagation();
-       if (historySearch) {
-         historySearch.value = '';
-         historySearch.focus();
-         renderHistory();
-       }
-     });
+      clearSearchBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if (historySearch) {
+          historySearch.value = '';
+          historySearch.focus();
+          renderHistory();
+        }
+      });
     }
 
     // 項目編集モーダル
     editCategoryBtn.addEventListener('click', (e)=>{
-     e.stopPropagation();
-     openCategoryEditor();
+      e.stopPropagation();
+      openCategoryEditor();
     });
 
     // モーダル内の「追加」ボタン（新しい行を modalUsers に追加して再描画）
     addCategoryInModal.addEventListener('click', (e)=>{
-     e.stopPropagation();
-     if (!modalUsers) modalUsers = loadUserCategories().slice();
-     const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
-     const name = '';
-     modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
-     // re-render modal
-     // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
-     // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
-     // quick re-render:
-     (function renderModalRows(){
-       categoryEditorContent.innerHTML = '';
-       if (!modalUsers || modalUsers.length === 0){
-         const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
-         categoryEditorContent.appendChild(p);
-         return;
-       }
-       modalUsers.forEach((c, idx)=>{
-         const row = document.createElement('div'); row.className = 'cat-row';
-         row.dataset.catId = c.id;
-         const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
-         const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
-         const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name || '';
-         const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
-         const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
-         row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
-         categoryEditorContent.appendChild(row);
+      e.stopPropagation();
+      if (!modalUsers) modalUsers = loadUserCategories().slice();
+      const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+      const name = '';
+      modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
+      // re-render modal
+      // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
+      // We'll render using same logic by calling openCategoryEditor again, but to avoid resetting modalUsers we re-render content directly:
+      // quick re-render:
+      (function renderModalRows(){
+        categoryEditorContent.innerHTML = '';
+        if (!modalUsers || modalUsers.length === 0){
+          const p = document.createElement('div'); p.style.color='#666'; p.textContent = '編集できる項目はありません';
+          categoryEditorContent.appendChild(p);
+          return;
+        }
+        modalUsers.forEach((c, idx)=>{
+          const row = document.createElement('div'); row.className = 'cat-row';
+          row.dataset.catId = c.id;
+          const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
+          const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
+          const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name || '';
+          const colorIn = document.createElement('input'); colorIn.type = 'color'; colorIn.value = (c.color && c.color.length===4)? expandHex(c.color) : (c.color || '#ffffff');
+          const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
+          row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
+          categoryEditorContent.appendChild(row);
 
-         if (idx === 0) upBtn.disabled = true;
-         if (idx === modalUsers.length - 1) downBtn.disabled = true;
+          if (idx === 0) upBtn.disabled = true;
+          if (idx === modalUsers.length - 1) downBtn.disabled = true;
 
-         upBtn.addEventListener('click', (ev)=>{
-           ev.stopPropagation();
-           if (idx > 0){
-             const tmp = modalUsers[idx-1];
-             modalUsers[idx-1] = modalUsers[idx];
-             modalUsers[idx] = tmp;
-             renderModalRows();
-           }
-         });
-         downBtn.addEventListener('click', (ev)=>{
-           ev.stopPropagation();
-           if (idx < modalUsers.length - 1){
-             const tmp = modalUsers[idx+1];
-             modalUsers[idx+1] = modalUsers[idx];
-             modalUsers[idx] = tmp;
-             renderModalRows();
-           }
-         });
-         delBtn.addEventListener('click', (ev)=>{
-           ev.stopPropagation();
-           if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
-           deleteCategory(c.id);
-           const i = modalUsers.findIndex(x => x.id === c.id);
-           if (i >= 0) modalUsers.splice(i,1);
-           renderModalRows();
-         });
-         nameIn.addEventListener('input', (ev)=>{
-           const i = modalUsers.findIndex(x => x.id === c.id);
-           if (i >= 0) modalUsers[i].name = nameIn.value;
-         });
-         colorIn.addEventListener('input', (ev)=>{
-           const i = modalUsers.findIndex(x => x.id === c.id);
-           let v = colorIn.value || '#ffffff';
-           if (!v.startsWith('#')) v = '#' + v;
-           v = v.toLowerCase();
-           if (!isValidHexColor(v)) v = '#ffffff';
-           v = expandHex(v);
-           if (i >= 0) modalUsers[i].color = v;
-         });
-       });
-     })();
+          upBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (idx > 0){
+              const tmp = modalUsers[idx-1];
+              modalUsers[idx-1] = modalUsers[idx];
+              modalUsers[idx] = tmp;
+              renderModalRows();
+            }
+          });
+          downBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (idx < modalUsers.length - 1){
+              const tmp = modalUsers[idx+1];
+              modalUsers[idx+1] = modalUsers[idx];
+              modalUsers[idx] = tmp;
+              renderModalRows();
+            }
+          });
+          delBtn.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
+            deleteCategory(c.id);
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            if (i >= 0) modalUsers.splice(i,1);
+            renderModalRows();
+          });
+          nameIn.addEventListener('input', (ev)=>{
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            if (i >= 0) modalUsers[i].name = nameIn.value;
+          });
+          colorIn.addEventListener('input', (ev)=>{
+            const i = modalUsers.findIndex(x => x.id === c.id);
+            let v = colorIn.value || '#ffffff';
+            if (!v.startsWith('#')) v = '#' + v;
+            v = v.toLowerCase();
+            if (!isValidHexColor(v)) v = '#ffffff';
+            v = expandHex(v);
+            if (i >= 0) modalUsers[i].color = v;
+          });
+        });
+      })();
     });
 
     // 閉じるボタン：モーダル内の変更をまとめて保存して閉じる（自動保存）
     closeCategoryEditor.addEventListener('click', (e)=>{
-     e.stopPropagation();
-     try {
-       if (Array.isArray(modalUsers)) {
-         // 保存: modalUsers をそのまま保存（順序も反映）
-         saveUserCategories(modalUsers);
-       } else {
-         // fallback: try to collect from DOM rows (旧ロジック互換)
-         const rows = Array.from(categoryEditorContent.querySelectorAll('.cat-row'));
-         if (rows.length > 0) {
-           const users = loadUserCategories();
-           const mapById = {};
-           for (const u of users) mapById[u.id] = u;
+      e.stopPropagation();
+      try {
+        if (Array.isArray(modalUsers)) {
+          // 保存: modalUsers をそのまま保存（順序も反映）
+          saveUserCategories(modalUsers);
+        } else {
+          // fallback: try to collect from DOM rows (旧ロジック互換)
+          const rows = Array.from(categoryEditorContent.querySelectorAll('.cat-row'));
+          if (rows.length > 0) {
+            const users = loadUserCategories();
+            const mapById = {};
+            for (const u of users) mapById[u.id] = u;
 
-           let changed = false;
-           const newUsers = [];
-           for (const row of rows) {
-             const id = row.dataset.catId || ('cat_' + Date.now() + '_' + Math.floor(Math.random()*1000));
-             const nameInput = row.querySelector('input[type="text"]');
-             const colorInput = row.querySelector('input[type="color"]');
-             const newName = nameInput ? (nameInput.value.trim() || mapById[id]?.name || '') : (mapById[id]?.name || '');
-             let newColor = colorInput ? (colorInput.value || '#ffffff') : (mapById[id]?.color || '#ffffff');
-             if (!newColor.startsWith('#')) newColor = '#' + newColor;
-             newColor = newColor.toLowerCase();
-             if (!isValidHexColor(newColor)) newColor = '#ffffff';
-             newColor = expandHex(newColor);
+            let changed = false;
+            const newUsers = [];
+            for (const row of rows) {
+              const id = row.dataset.catId || ('cat_' + Date.now() + '_' + Math.floor(Math.random()*1000));
+              const nameInput = row.querySelector('input[type="text"]');
+              const colorInput = row.querySelector('input[type="color"]');
+              const newName = nameInput ? (nameInput.value.trim() || mapById[id]?.name || '') : (mapById[id]?.name || '');
+              let newColor = colorInput ? (colorInput.value || '#ffffff') : (mapById[id]?.color || '#ffffff');
+              if (!newColor.startsWith('#')) newColor = '#' + newColor;
+              newColor = newColor.toLowerCase();
+              if (!isValidHexColor(newColor)) newColor = '#ffffff';
+              newColor = expandHex(newColor);
 
-             if (mapById[id]) {
-               if (mapById[id].name !== newName || (mapById[id].color || '') !== newColor) {
-                 mapById[id].name = newName;
-                 mapById[id].color = newColor;
-                 changed = true;
-               }
-               newUsers.push(mapById[id]);
-             } else {
-               newUsers.push({ id, name: newName, color: newColor, createdAt: Date.now() });
-               changed = true;
-             }
-           }
-           saveUserCategories(newUsers);
-         }
-       }
-     } catch (err) {
-       console.warn('カテゴリ保存中にエラー', err);
-     }
-     // refresh UI and close modal
-     populateCategorySelect();
-     renderHistory();
-     closeCategoryEditorModal();
+              if (mapById[id]) {
+                if (mapById[id].name !== newName || (mapById[id].color || '') !== newColor) {
+                  mapById[id].name = newName;
+                  mapById[id].color = newColor;
+                  changed = true;
+                }
+                newUsers.push(mapById[id]);
+              } else {
+                newUsers.push({ id, name: newName, color: newColor, createdAt: Date.now() });
+                changed = true;
+              }
+            }
+            saveUserCategories(newUsers);
+          }
+        }
+      } catch (err) {
+        console.warn('カテゴリ保存中にエラー', err);
+      }
+      // refresh UI and close modal
+      populateCategorySelect();
+      renderHistory();
+      closeCategoryEditorModal();
     });
 
     modalBackdrop.addEventListener('click', (e)=>{
-     if (e.target === modalBackdrop) closeCategoryEditorModal();
+      if (e.target === modalBackdrop) closeCategoryEditorModal();
     });
 
     function preventTouchScroll(e){
-     if ((overlayRight && overlayRight.contains(e.target)) || (topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target))) return;
-     e.preventDefault();
-     e.stopPropagation();
+      if ((overlayRight && overlayRight.contains(e.target)) || (topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target))) return;
+      e.preventDefault();
+      e.stopPropagation();
     }
 
     function adjustTopSeek() {
-     try {
-       const margin = 8;
-       const baseLeftMin = 12;
-       if (topBack) topBack.style.left = baseLeftMin + 'px';
-       if (skipGroup) {
-         skipGroup.style.left = baseLeftMin + 'px';
-       }
+      try {
+        const margin = 8;
+        const baseLeftMin = 12;
+        if (topBack) topBack.style.left = baseLeftMin + 'px';
+        if (skipGroup) {
+          skipGroup.style.left = baseLeftMin + 'px';
+        }
 
-       let leftEdge = baseLeftMin;
-       try {
-         const bRect = topBack.getBoundingClientRect();
-         leftEdge = Math.max(leftEdge, Math.round(bRect.right + margin));
-       } catch (e){}
+        let leftEdge = baseLeftMin;
+        try {
+          const bRect = topBack.getBoundingClientRect();
+          leftEdge = Math.max(leftEdge, Math.round(bRect.right + margin));
+        } catch (e){}
 
-       try {
-         const sRect = skipGroup.getBoundingClientRect();
-         if (sRect.width > 0) leftEdge = Math.max(leftEdge, Math.round(sRect.right + margin));
-         if (topBack) {
-           const backRect = topBack.getBoundingClientRect();
-           skipGroup.style.top = Math.round(backRect.bottom + 6) + 'px';
-         }
-       } catch (e){}
+        try {
+          const sRect = skipGroup.getBoundingClientRect();
+          if (sRect.width > 0) leftEdge = Math.max(leftEdge, Math.round(sRect.right + margin));
+          if (topBack) {
+            const backRect = topBack.getBoundingClientRect();
+            skipGroup.style.top = Math.round(backRect.bottom + 6) + 'px';
+          }
+        } catch (e){}
 
-       let rightEdge = 12;
-       try {
-         const tRect = topToggle.getBoundingClientRect();
-         rightEdge = Math.max(12, Math.round(window.innerWidth - tRect.left + margin));
-       } catch (e){}
+        let rightEdge = 12;
+        try {
+          const tRect = topToggle.getBoundingClientRect();
+          rightEdge = Math.max(12, Math.round(window.innerWidth - tRect.left + margin));
+        } catch (e){}
 
-       const minSeekWidth = 180;
-       const available = window.innerWidth - leftEdge - rightEdge;
-       if (available < minSeekWidth) {
-         const deficit = minSeekWidth - available;
-         const reduceLeft = Math.ceil(deficit / 2);
-         const reduceRight = Math.floor(deficit / 2);
-         leftEdge = Math.max(6, leftEdge - reduceLeft);
-         rightEdge = Math.max(6, rightEdge - reduceRight);
-       }
+        const minSeekWidth = 180;
+        const available = window.innerWidth - leftEdge - rightEdge;
+        if (available < minSeekWidth) {
+          const deficit = minSeekWidth - available;
+          const reduceLeft = Math.ceil(deficit / 2);
+          const reduceRight = Math.floor(deficit / 2);
+          leftEdge = Math.max(6, leftEdge - reduceLeft);
+          rightEdge = Math.max(6, rightEdge - reduceRight);
+        }
 
-       if (topSeek) {
-         topSeek.style.left = leftEdge + 'px';
-         topSeek.style.right = rightEdge + 'px';
-       }
+        if (topSeek) {
+          topSeek.style.left = leftEdge + 'px';
+          topSeek.style.right = rightEdge + 'px';
+        }
 
-       repositionMarkerLayer();
-     } catch (err) {
-       if (topSeek) { topSeek.style.left = ''; topSeek.style.right = ''; }
-     }
+        repositionMarkerLayer();
+      } catch (err) {
+        if (topSeek) { topSeek.style.left = ''; topSeek.style.right = ''; }
+      }
     }
 
     window.addEventListener('resize', () => { adjustTopSeek(); renderMarkers(); });
@@ -1803,35 +1785,35 @@
     window.addEventListener('load', () => { setTimeout(adjustTopSeek, 120); setTimeout(renderMarkers, 140); });
 
     async function openViewer(autoPlay = false){
-     if (!currentObjectUrl) return;
-     pickerScreen.style.display = 'none';
-     viewer.style.display = 'block';
-     viewer.setAttribute('aria-hidden','false');
+      if (!currentObjectUrl) return;
+      pickerScreen.style.display = 'none';
+      viewer.style.display = 'block';
+      viewer.setAttribute('aria-hidden','false');
 
-     // hide reload button on viewer screen
-     if (reloadBtn) reloadBtn.style.display = 'none';
+      // hide reload button on viewer screen
+      if (reloadBtn) reloadBtn.style.display = 'none';
 
-     video.controls = false;
+      video.controls = false;
 
-     video.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
-     video.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
-     video.addEventListener('touchmove', preventTouchScroll, {passive:false});
-     video.addEventListener('click', (e) => { e.stopPropagation(); }, {passive:false});
-     video.addEventListener('dblclick', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('touchmove', preventTouchScroll, {passive:false});
+      video.addEventListener('click', (e) => { e.stopPropagation(); }, {passive:false});
+      video.addEventListener('dblclick', (e) => { e.stopPropagation(); }, {passive:false});
 
-     videoWrap.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
-     videoWrap.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
-     videoWrap.addEventListener('touchmove', preventTouchScroll, {passive:false});
+      videoWrap.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
+      videoWrap.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
+      videoWrap.addEventListener('touchmove', preventTouchScroll, {passive:false});
 
-     if (autoPlay) {
-       try { await video.play(); } catch (err) { console.warn('自動再生できませんでした:', err); }
-     }
+      if (autoPlay) {
+        try { await video.play(); } catch (err) { console.warn('自動再生できませんでした:', err); }
+      }
 
-     updateToggleButton();
-     updateSpeedDisplay();
+      updateToggleButton();
+      updateSpeedDisplay();
 
-     setTimeout(adjustTopSeek, 60);
-     setTimeout(adjustTopSeek, 300);
+      setTimeout(adjustTopSeek, 60);
+      setTimeout(adjustTopSeek, 300);
     }
 
     // pickBtn: 既存の <input> を開く
@@ -1846,146 +1828,146 @@
 
     // ファイル選択（複数対応）：選択したファイルを履歴に追加し画面遷移しない
     fileInput.addEventListener('change', async () => {
-     const files = fileInput.files;
-     if (!files || files.length === 0) {
-       fileNameEl.textContent = 'まだファイルが選択されていません';
-       return;
-     }
+      const files = fileInput.files;
+      if (!files || files.length === 0) {
+        fileNameEl.textContent = 'まだファイルが選択されていません';
+        return;
+      }
 
-     // 表示は簡易に（単数は詳細、複数は個数表示）
-     if (files.length === 1) {
-       const f = files[0];
-       fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
-     } else {
-       fileNameEl.textContent = `${files.length} 個のファイルが選択されました`;
-     }
+      // 表示は簡易に（単数は詳細、複数は個数表示）
+      if (files.length === 1) {
+        const f = files[0];
+        fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+      } else {
+        fileNameEl.textContent = `${files.length} 個のファイルが選択されました`;
+      }
 
-     // 保存処理（順次）
-     const savedIds = [];
-     for (const f of Array.from(files)) {
-       try {
-         const id = await saveFileToHistory(f);
-         if (id) savedIds.push(id);
-       } catch (err) {
-         console.warn('ファイル保存中にエラー', err);
-       }
-     }
+      // 保存処理（順次）
+      const savedIds = [];
+      for (const f of Array.from(files)) {
+        try {
+          const id = await saveFileToHistory(f);
+          if (id) savedIds.push(id);
+        } catch (err) {
+          console.warn('ファイル保存中にエラー', err);
+        }
+      }
 
-     // 入力をクリアして同じファイルを再度選べるようにする
-     try { fileInput.value = ''; } catch(e){}
+      // 入力をクリアして同じファイルを再度選べるようにする
+      try { fileInput.value = ''; } catch(e){}
 
-     // 最後に履歴を更新（自動でビューアへは遷移しない）
-     if (savedIds.length > 0) {
-       currentHistoryId = savedIds[savedIds.length - 1];
-     }
-     renderHistory();
+      // 最後に履歴を更新（自動でビューアへは遷移しない）
+      if (savedIds.length > 0) {
+        currentHistoryId = savedIds[savedIds.length - 1];
+      }
+      renderHistory();
     });
 
     // ドラッグ＆ドロップ対応: pickerScreen 上でのドロップを受けてファイルを履歴へ追加
     pickerScreen.addEventListener('dragover', (e) => {
-     e.preventDefault();
-     try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
-     pickerScreen.classList.add('dragover');
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'copy'; } catch (err) {}
+      pickerScreen.classList.add('dragover');
     }, {passive:false});
     pickerScreen.addEventListener('dragleave', (e) => {
-     pickerScreen.classList.remove('dragover');
+      pickerScreen.classList.remove('dragover');
     });
     pickerScreen.addEventListener('drop', async (e) => {
-     e.preventDefault();
-     pickerScreen.classList.remove('dragover');
-     const dt = e.dataTransfer;
-     if (!dt) return;
-     const files = dt.files;
-     if (!files || files.length === 0) return;
+      e.preventDefault();
+      pickerScreen.classList.remove('dragover');
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const files = dt.files;
+      if (!files || files.length === 0) return;
 
-     if (files.length === 1) {
-       const f = files[0];
-       fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
-     } else {
-       fileNameEl.textContent = `${files.length} 個のファイルをドロップしました`;
-     }
+      if (files.length === 1) {
+        const f = files[0];
+        fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
+      } else {
+        fileNameEl.textContent = `${files.length} 個のファイルをドロップしました`;
+      }
 
-     const savedIds = [];
-     for (const f of Array.from(files)) {
-       try {
-         const id = await saveFileToHistory(f);
-         if (id) savedIds.push(id);
-       } catch (err) {
-         console.warn('ドロップファイル保存失敗', err);
-       }
-     }
-     if (savedIds.length > 0) {
-       currentHistoryId = savedIds[savedIds.length - 1];
-     }
-     renderHistory();
+      const savedIds = [];
+      for (const f of Array.from(files)) {
+        try {
+          const id = await saveFileToHistory(f);
+          if (id) savedIds.push(id);
+        } catch (err) {
+          console.warn('ドロップファイル保存失敗', err);
+        }
+      }
+      if (savedIds.length > 0) {
+        currentHistoryId = savedIds[savedIds.length - 1];
+      }
+      renderHistory();
     }, {passive:false});
 
     async function openFromHistory(id){
-     const entry = await getEntry(id);
-     if (!entry) return alert('履歴が見つかりませんでした');
+      const entry = await getEntry(id);
+      if (!entry) return alert('履歴が見つかりませんでした');
 
-     if (!entry.blob) {
-       alert('この履歴は容量節約のため動画本体が保存されていません（再度ファイルを開いてください）');
-       return;
-     }
+      if (!entry.blob) {
+        alert('この履歴は容量節約のため動画本体が保存されていません（再度ファイルを開いてください）');
+        return;
+      }
 
-     if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
-     currentObjectUrl = URL.createObjectURL(entry.blob);
-     video.src = currentObjectUrl;
-     video.load();
-     video.playbackRate = 1.0;
-     currentHistoryId = entry.id;
-     fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
+      if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
+      currentObjectUrl = URL.createObjectURL(entry.blob);
+      video.src = currentObjectUrl;
+      video.load();
+      video.playbackRate = 1.0;
+      currentHistoryId = entry.id;
+      fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
 
-     // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
-     markers = Array.isArray(entry.markers) ? entry.markers.slice() :
+      // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
+      markers = Array.isArray(entry.markers) ? entry.markers.slice() :
                 (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
-     // --- end change ---
+      // --- end change ---
 
-     clearMarkerElements();
+      clearMarkerElements();
 
-     await openViewer(true);
+      await openViewer(true);
     }
 
     async function togglePlay() {
-     if (video.paused || video.ended) {
-       try { await video.play(); } catch (err) { console.warn('再生できませんでした:', err); alert('再生できませんでした。ページの許可や操作を確認してください。'); }
-     } else {
-       video.pause();
-     }
-     updateToggleButton();
-     setTimeout(adjustTopSeek, 30);
+      if (video.paused || video.ended) {
+        try { await video.play(); } catch (err) { console.warn('再生できませんでした:', err); alert('再生できませんでした。ページの許可や操作を確認してください。'); }
+      } else {
+        video.pause();
+      }
+      updateToggleButton();
+      setTimeout(adjustTopSeek, 30);
     }
 
     function updateToggleButton() {
-     if (video.paused || video.ended) {
-       playToggleBtn.textContent = '再生';
-       playToggleBtn.setAttribute('aria-pressed','false');
-     } else {
-       playToggleBtn.textContent = '停止';
-       playToggleBtn.setAttribute('aria-pressed','true');
-     }
+      if (video.paused || video.ended) {
+        playToggleBtn.textContent = '再生';
+        playToggleBtn.setAttribute('aria-pressed','false');
+      } else {
+        playToggleBtn.textContent = '停止';
+        playToggleBtn.setAttribute('aria-pressed','true');
+      }
     }
 
     playToggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
 
     function updateSpeedDisplay() { speedDisplay.textContent = video.playbackRate.toFixed(2) + 'x'; }
     function changeSpeed(delta) {
-     let newRate = Math.round((video.playbackRate + delta) / SPEED_STEP) * SPEED_STEP;
-     if (newRate < SPEED_MIN) newRate = SPEED_MIN;
-     if (newRate > SPEED_MAX) newRate = SPEED_MAX;
-     video.playbackRate = Number(newRate.toFixed(2));
-     updateSpeedDisplay();
+      let newRate = Math.round((video.playbackRate + delta) / SPEED_STEP) * SPEED_STEP;
+      if (newRate < SPEED_MIN) newRate = SPEED_MIN;
+      if (newRate > SPEED_MAX) newRate = SPEED_MAX;
+      video.playbackRate = Number(newRate.toFixed(2));
+      updateSpeedDisplay();
     }
     speedMinus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(-SPEED_STEP); });
     speedPlus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(SPEED_STEP); });
 
     function seekBy(deltaSec){
-     if (!video.duration || !isFinite(video.duration)) return;
-     let t = video.currentTime + deltaSec;
-     if (t < 0) t = 0;
-     if (t > video.duration) t = video.duration;
-     video.currentTime = t;
+      if (!video.duration || !isFinite(video.duration)) return;
+      let t = video.currentTime + deltaSec;
+      if (t < 0) t = 0;
+      if (t > video.duration) t = video.duration;
+      video.currentTime = t;
     }
 
     back3Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(-3); });
@@ -1994,95 +1976,95 @@
     fwd5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(5); });
 
     [back3Btn,back5Btn,fwd3Btn,fwd5Btn].forEach(btn=>{
-     if (btn) btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
+      if (btn) btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
     });
 
     if (mirrorBtn) {
-     mirrorBtn.addEventListener('click', (e) => {
-       e.stopPropagation();
-       toggleMirror();
-     });
-     mirrorBtn.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:true});
+      mirrorBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleMirror();
+      });
+      mirrorBtn.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:true});
     }
 
     function toggleMirror(){
-     const isNowMirrored = video.classList.toggle('mirrored');
-     if (mirrorBtn) {
-       mirrorBtn.setAttribute('aria-pressed', isNowMirrored ? 'true' : 'false');
-     }
+      const isNowMirrored = video.classList.toggle('mirrored');
+      if (mirrorBtn) {
+        mirrorBtn.setAttribute('aria-pressed', isNowMirrored ? 'true' : 'false');
+      }
     }
 
     backBtn.addEventListener('click', async (e) => {
-     e.stopPropagation();
+      e.stopPropagation();
 
-     // --- 追加: 現在のマーカーを DB に保存（ファイル単位） ---
-     try {
-       if (currentHistoryId != null) {
-         // ensure markers array is normalized numbers
-         const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
-         await updateEntryMarkers(currentHistoryId, normalized);
-       }
-     } catch (err) {
-       console.warn('マーカーの保存に失敗しました', err);
-       // 保存失敗でも画面を戻す（という仕様）
-     }
-     // --- 保存終了 ---
+      // --- 追加: 現在のマーカーを DB に保存（ファイル単位） ---
+      try {
+        if (currentHistoryId != null) {
+          // ensure markers array is normalized numbers
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          await updateEntryMarkers(currentHistoryId, normalized);
+        }
+      } catch (err) {
+        console.warn('マーカーの保存に失敗しました', err);
+        // 保存失敗でも画面を戻す（という仕様）
+      }
+      // --- 保存終了 ---
 
-     video.pause();
-     video.removeAttribute('src');
-     video.load();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
 
-     if (currentObjectUrl) {
-       URL.revokeObjectURL(currentObjectUrl);
-       currentObjectUrl = null;
-     }
+      if (currentObjectUrl) {
+        URL.revokeObjectURL(currentObjectUrl);
+        currentObjectUrl = null;
+      }
 
-     try {
-       video.removeEventListener('touchmove', preventTouchScroll);
-       videoWrap.removeEventListener('touchmove', preventTouchScroll);
-     } catch (err){}
+      try {
+        video.removeEventListener('touchmove', preventTouchScroll);
+        videoWrap.removeEventListener('touchmove', preventTouchScroll);
+      } catch (err){}
 
-     viewer.style.display = 'none';
-     viewer.setAttribute('aria-hidden','true');
-     pickerScreen.style.display = 'flex';
+      viewer.style.display = 'none';
+      viewer.setAttribute('aria-hidden','true');
+      pickerScreen.style.display = 'flex';
 
-     fileInput.value = '';
-     fileNameEl.textContent = 'まだファイルが選択されていません';
+      fileInput.value = '';
+      fileNameEl.textContent = 'まだファイルが選択されていません';
 
-     markers = [];
-     clearMarkerElements();
+      markers = [];
+      clearMarkerElements();
 
-     // ミラー状態リセット（見た目を統一）
-     if (video.classList.contains('mirrored')) {
-       video.classList.remove('mirrored');
-       if (mirrorBtn) { mirrorBtn.setAttribute('aria-pressed','false'); }
-     }
+      // ミラー状態リセット（見た目を統一）
+      if (video.classList.contains('mirrored')) {
+        video.classList.remove('mirrored');
+        if (mirrorBtn) { mirrorBtn.setAttribute('aria-pressed','false'); }
+      }
 
-     // show reload button again when returning to picker screen
-     if (reloadBtn) reloadBtn.style.display = '';
+      // show reload button again when returning to picker screen
+      if (reloadBtn) reloadBtn.style.display = '';
     });
 
     video.addEventListener('timeupdate', () => {
-     if (!isSeeking && video.duration && isFinite(video.duration)) {
-       const pct = (video.currentTime / video.duration) * 100;
-       seekBar.value = pct;
-     }
-     updateToggleButton();
+      if (!isSeeking && video.duration && isFinite(video.duration)) {
+        const pct = (video.currentTime / video.duration) * 100;
+        seekBar.value = pct;
+      }
+      updateToggleButton();
     });
 
     video.addEventListener('loadedmetadata', () => {
-     seekBar.value = 0;
-     updateToggleButton();
-     renderMarkers();
+      seekBar.value = 0;
+      updateToggleButton();
+      renderMarkers();
     });
 
     seekBar.addEventListener('input', (e) => { isSeeking = true; });
     seekBar.addEventListener('change', (e) => {
-     const pct = Number(seekBar.value);
-     if (isFinite(video.duration) && video.duration > 0) {
-       video.currentTime = (pct / 100) * video.duration;
-     }
-     isSeeking = false;
+      const pct = Number(seekBar.value);
+      if (isFinite(video.duration) && video.duration > 0) {
+        video.currentTime = (pct / 100) * video.duration;
+      }
+      isSeeking = false;
     });
     seekBar.addEventListener('click', (e)=>e.stopPropagation());
     seekBar.addEventListener('touchend', (e)=>e.stopPropagation(), {passive:true});
@@ -2092,132 +2074,132 @@
     video.addEventListener('ended', updateToggleButton);
 
     function tryStartOnTap(e){
-     if (!(video.paused || video.ended)) return;
-     if ((topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target)) || (overlayRight && overlayRight.contains(e.target)) || (skipGroup && skipGroup.contains(e.target))) {
-       return;
-     }
-     video.play().catch(()=>{});
-     updateToggleButton();
+      if (!(video.paused || video.ended)) return;
+      if ((topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target)) || (overlayRight && overlayRight.contains(e.target)) || (skipGroup && skipGroup.contains(e.target))) {
+        return;
+      }
+      video.play().catch(()=>{});
+      updateToggleButton();
     }
 
     viewer.addEventListener('click', tryStartOnTap);
     viewer.addEventListener('touchend', tryStartOnTap, {passive:true});
 
     pickBtn.addEventListener('keydown', (e) => {
-     if (e.key === 'Enter' || e.key === ' ') fileInput.click();
+      if (e.key === 'Enter' || e.key === ' ') fileInput.click();
     });
 
     if (reloadBtn) {
-     reloadBtn.addEventListener('click', (e) => {
-       e.stopPropagation();
-       if (confirm('ページを再読み込みしますか？ 開いている動画や未保存の変更は失われます。')) {
-         location.reload();
-       }
-     });
+      reloadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('ページを再読み込みしますか？ 開いている動画や未保存の変更は失われます。')) {
+          location.reload();
+        }
+      });
     }
 
     window.addEventListener('beforeunload', () => {
-     if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+      if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
 
     (async ()=>{ try{ await openDB(); populateCategorySelect(); await renderHistory(); }catch(e){ console.warn(e); } })();
 
     function clearMarkerElements(){
-     while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
+      while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
     }
 
     function renderMarkers(){
-     clearMarkerElements();
-     if (!markers || markers.length === 0) return;
-     const dur = (video && isFinite(video.duration)) ? video.duration : null;
-     if (!dur) return;
+      clearMarkerElements();
+      if (!markers || markers.length === 0) return;
+      const dur = (video && isFinite(video.duration)) ? video.duration : null;
+      if (!dur) return;
 
-     const seekRect = seekBar.getBoundingClientRect();
-     const layerRect = markerLayer.getBoundingClientRect();
-     if (seekRect.width <= 0) return;
+      const seekRect = seekBar.getBoundingClientRect();
+      const layerRect = markerLayer.getBoundingClientRect();
+      if (seekRect.width <= 0) return;
 
-     const markerW = 2;
-     const markerH = 12;
+      const markerW = 2;
+      const markerH = 12;
 
-     markers.forEach((t, idx) => {
-       const el = document.createElement('div');
-       el.className = 'marker';
-       el.setAttribute('role','presentation');
-       el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
+      markers.forEach((t, idx) => {
+        const el = document.createElement('div');
+        el.className = 'marker';
+        el.setAttribute('role','presentation');
+        el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
 
-       const frac = Math.max(0, Math.min(1, t / dur));
-       const leftOnSeekPx = frac * seekRect.width;
-       const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
-       const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
+        const frac = Math.max(0, Math.min(1, t / dur));
+        const leftOnSeekPx = frac * seekRect.width;
+        const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
+        const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
 
-       el.style.left = `${Math.round(leftPx)}px`;
-       el.style.top = `${Math.round(topPx)}px`;
-       markerLayer.appendChild(el);
-     });
+        el.style.left = `${Math.round(leftPx)}px`;
+        el.style.top = `${Math.round(topPx)}px`;
+        markerLayer.appendChild(el);
+      });
     }
 
     markerAddBtn.addEventListener('click', (e) => {
-     e.stopPropagation();
-     if (!video || !isFinite(video.duration)) { return; }
-     const t = Number(video.currentTime || 0);
-     const EPS = 0.1;
-     const exist = markers.some(m => Math.abs(m - t) < EPS);
-     if (exist) {
-       return;
-     }
-     markers.push(t);
-     markers.sort((a,b)=>a-b);
-     renderMarkers();
+      e.stopPropagation();
+      if (!video || !isFinite(video.duration)) { return; }
+      const t = Number(video.currentTime || 0);
+      const EPS = 0.1;
+      const exist = markers.some(m => Math.abs(m - t) < EPS);
+      if (exist) {
+        return;
+      }
+      markers.push(t);
+      markers.sort((a,b)=>a-b);
+      renderMarkers();
     });
 
     function findPreviousMarkerIndex(referenceTime) {
-     if (!markers || markers.length === 0) return -1;
-     const EPS = 1e-6;
-     let idx = -1;
-     for (let i = 0; i < markers.length; i++){
-       if (markers[i] <= referenceTime - EPS) idx = i;
-       else break;
-     }
-     return idx;
+      if (!markers || markers.length === 0) return -1;
+      const EPS = 1e-6;
+      let idx = -1;
+      for (let i = 0; i < markers.length; i++){
+        if (markers[i] <= referenceTime - EPS) idx = i;
+        else break;
+      }
+      return idx;
     }
 
     markerJumpBtn.addEventListener('click', (e) => {
-     e.stopPropagation();
-     if (!markers || markers.length === 0) return;
-     if (!video || !isFinite(video.duration)) return;
-     const ref = Number(video.currentTime || 0);
-     const idx = findPreviousMarkerIndex(ref);
-     if (idx === -1) return;
-     video.currentTime = markers[idx];
-     const pct = (video.currentTime / video.duration) * 100;
-     seekBar.value = pct;
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) return;
+      video.currentTime = markers[idx];
+      const pct = (video.currentTime / video.duration) * 100;
+      seekBar.value = pct;
     });
 
     markerRemoveBtn.addEventListener('click', (e) => {
-     e.stopPropagation();
-     if (!markers || markers.length === 0) return;
-     if (!video || !isFinite(video.duration)) return;
-     const ref = Number(video.currentTime || 0);
-     const idx = findPreviousMarkerIndex(ref);
-     if (idx === -1) {
-       return;
-     }
-     markers.splice(idx, 1);
-     renderMarkers();
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) {
+        return;
+      }
+      markers.splice(idx, 1);
+      renderMarkers();
     });
 
     function repositionMarkerLayer(){
-     renderMarkers();
+      renderMarkers();
     }
 
     function formatTimeForLabel(sec){
-     if (!isFinite(sec)) return '0:00';
-     return (function(realSec){
-       if (!isFinite(realSec)) return '0:00';
-       const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
-       const mm = Math.floor(realSec / 60).toString();
-       return `${mm}:${ss}`;
-     })(sec);
+      if (!isFinite(sec)) return '0:00';
+      return (function(realSec){
+        if (!isFinite(realSec)) return '0:00';
+        const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
+        const mm = Math.floor(realSec / 60).toString();
+        return `${mm}:${ss}`;
+      })(sec);
     }
 
     video.addEventListener('loadeddata', () => { renderMarkers(); });
@@ -2230,112 +2212,112 @@
     * （サムネイル生成のみ削除済み）
     */
     async function saveFileToHistory(file){
-     try{
-       const db = await openDB();
+      try{
+        const db = await openDB();
 
-       // --- 既存チェック（readonly） ---
-       try {
-         const txr = db.transaction(STORE_NAME, 'readonly');
-         const storer = txr.objectStore(STORE_NAME);
-         const all = await getAllFromStore(storer);
-         try { await waitForTransactionComplete(txr); } catch(e){}
-         const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
-         if (match) {
-           // 更新 (createdAt) は readwrite で行う
-           const txu = db.transaction(STORE_NAME, 'readwrite');
-           const storeu = txu.objectStore(STORE_NAME);
-           match.createdAt = Date.now();
-           // migrate legacy categoryId -> categoryIds
-           if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
-             match.categoryIds = match.categoryId ? [match.categoryId] : [];
-             delete match.categoryId;
-           }
-           storeu.put(match);
-           await waitForTransactionComplete(txu);
-           // トリムはバックグラウンドで行う（await しても良い）
-           trimHistoryLimit(db).catch(()=>{});
-           return match.id;
-         }
-       } catch (e) {
-         // 既存チェック失敗しても保存自体を試みる（ログだけ）
-         console.warn('既存チェックに失敗しました（続行します）', e);
-       }
+        // --- 既存チェック（readonly） ---
+        try {
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+          if (match) {
+            // 更新 (createdAt) は readwrite で行う
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            match.createdAt = Date.now();
+            // migrate legacy categoryId -> categoryIds
+            if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
+              match.categoryIds = match.categoryId ? [match.categoryId] : [];
+              delete match.categoryId;
+            }
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            // トリムはバックグラウンドで行う（await しても良い）
+            trimHistoryLimit(db).catch(()=>{});
+            return match.id;
+          }
+        } catch (e) {
+          // 既存チェック失敗しても保存自体を試みる（ログだけ）
+          console.warn('既存チェックに失敗しました（続行します）', e);
+        }
 
-       // --- 新規追加（readwrite） ---
-       // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
-       const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
-       const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
+        // --- 新規追加（readwrite） ---
+        // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
+        const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
+        const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
 
-       const entry = {
-         name: file.name,
-         size: file.size,
-         type: file.type,
-         lastModified: file.lastModified || 0,
-         blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
-         createdAt: Date.now(),
-         note: '', // 新規: 補足フィールドを追加（空文字で初期化）
-         categoryIds: assignCatArr, // 複数対応: 空配列=未分類
-         markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
-       };
+        const entry = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified || 0,
+          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
+          createdAt: Date.now(),
+          note: '', // 新規: 補足フィールドを追加（空文字で初期化）
+          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
+          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
+        };
 
-       try {
-         const tx = db.transaction(STORE_NAME, 'readwrite');
-         const store = tx.objectStore(STORE_NAME);
-         const addReq = store.add(entry);
-         const id = await promisifyRequest(addReq);
-         await waitForTransactionComplete(tx);
-         // trim を同期的に実行（非致命的）
-         await trimHistoryLimit(db);
-         return id;
-       } catch (err) {
-         console.warn('最初の追加でエラー', err);
-         // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
-         if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
-           try {
-             // 古いものをいくつか削除して再挑戦
-             const txr2 = db.transaction(STORE_NAME, 'readwrite');
-             const store2 = txr2.objectStore(STORE_NAME);
-             const all = await getAllFromStore(store2);
-             const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
-             // 古いものを 3 件まで削除
-             const remove = sorted.slice(0, Math.min(3, sorted.length));
-             for (const it of remove) store2.delete(it.id);
-             await waitForTransactionComplete(txr2);
-           } catch (cleanupErr) {
-             console.warn('クリーンアップ中にエラー', cleanupErr);
-           }
-           // blob を null にして保存（容量を節約）
-           try {
-             const tx2 = db.transaction(STORE_NAME, 'readwrite');
-             const store2 = tx2.objectStore(STORE_NAME);
-             const entrySmall = Object.assign({}, entry, { blob: null });
-             const addReq2 = store2.add(entrySmall);
-             const id2 = await promisifyRequest(addReq2);
-             await waitForTransactionComplete(tx2);
-             await trimHistoryLimit(db);
-             return id2;
-           } catch (finalErr) {
-             console.warn('最終的な追加にも失敗しました', finalErr);
-             return null;
-           }
-         } else {
-           // その他のエラー: 可能なら blob を外して保存
-           try {
-             const tx3 = db.transaction(STORE_NAME, 'readwrite');
-             const store3 = tx3.objectStore(STORE_NAME);
-             const entrySmall = Object.assign({}, entry, { blob: null });
-             const addReq3 = store3.add(entrySmall);
-             const id3 = await promisifyRequest(addReq3);
-             await waitForTransactionComplete(tx3);
-             await trimHistoryLimit(db);
-             return id3;
-           } catch (err2) {
-             console.warn('blob を外しても保存失敗', err2);
-             return null;
-           }
-         }
-       }
-     }catch(err){ console.warn('保存に失敗しました', err); return null; }
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const addReq = store.add(entry);
+          const id = await promisifyRequest(addReq);
+          await waitForTransactionComplete(tx);
+          // trim を同期的に実行（非致命的）
+          await trimHistoryLimit(db);
+          return id;
+        } catch (err) {
+          console.warn('最初の追加でエラー', err);
+          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
+          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
+            try {
+              // 古いものをいくつか削除して再挑戦
+              const txr2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = txr2.objectStore(STORE_NAME);
+              const all = await getAllFromStore(store2);
+              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
+              // 古いものを 3 件まで削除
+              const remove = sorted.slice(0, Math.min(3, sorted.length));
+              for (const it of remove) store2.delete(it.id);
+              await waitForTransactionComplete(txr2);
+            } catch (cleanupErr) {
+              console.warn('クリーンアップ中にエラー', cleanupErr);
+            }
+            // blob を null にして保存（容量を節約）
+            try {
+              const tx2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = tx2.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq2 = store2.add(entrySmall);
+              const id2 = await promisifyRequest(addReq2);
+              await waitForTransactionComplete(tx2);
+              await trimHistoryLimit(db);
+              return id2;
+            } catch (finalErr) {
+              console.warn('最終的な追加にも失敗しました', finalErr);
+              return null;
+            }
+          } else {
+            // その他のエラー: 可能なら blob を外して保存
+            try {
+              const tx3 = db.transaction(STORE_NAME, 'readwrite');
+              const store3 = tx3.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq3 = store3.add(entrySmall);
+              const id3 = await promisifyRequest(addReq3);
+              await waitForTransactionComplete(tx3);
+              await trimHistoryLimit(db);
+              return id3;
+            } catch (err2) {
+              console.warn('blob を外しても保存失敗', err2);
+              return null;
+            }
+          }
+        }
+      }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
 
   </script>
