@@ -1584,7 +1584,7 @@
       e.stopPropagation();
       if (!modalUsers) modalUsers = loadUserCategories().slice();
       const id = 'cat_new_' + Date.now() + '_' + Math.floor(Math.random()*1000);
-      const name = '新しい項目';
+      const name = '';
       modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
       // re-render modal
       // reuse openCategoryEditor's rendering by manually calling it (keeping modal open)
@@ -2310,3 +2310,5 @@
   </script>
 </body>
 </html>
+
+
