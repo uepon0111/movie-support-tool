@@ -436,6 +436,12 @@
         <div style="display:flex;align-items:center;gap:8px">
           <div id="historyCount" aria-live="polite" style="color:#666">0 / 0 件表示</div>
           <button id="clearHistoryBtn" class="small-btn">履歴を消去</button>
+
+          <!-- ここにエクスポート / インポートボタンを追加 -->
+          <button id="exportBtn" class="small-btn" title="履歴とファイルをエクスポート">エクスポート</button>
+          <button id="importBtn" class="small-btn" title="エクスポートしたファイルをインポート">インポート</button>
+          <!-- インポート用隠し input -->
+          <input id="importInput" type="file" accept=".json,application/json" style="display:none" />
         </div>
       </div>
 
@@ -572,6 +578,11 @@
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
 
     const historyCountEl = document.getElementById('historyCount');
+
+    // export/import elements
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importInput = document.getElementById('importInput');
 
     // search elements
     const historySearch = document.getElementById('historySearch');
@@ -1937,7 +1948,7 @@
 
       // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
       markers = Array.isArray(entry.markers) ? entry.markers.slice() :
-                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+            (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
       // --- end change ---
 
       clearMarkerElements();
@@ -2351,6 +2362,280 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
+
+    //
+    // -----------------------
+    // ここから新規: エクスポート / インポート機能
+    // -----------------------
+    //
+    // 実装方針（シンプルな方法）:
+    // - エクスポート: IndexedDB の全エントリ（metadata, markers, note, categoryIds, blob）を読み出して
+    //   JSON にまとめる。blob が存在する場合は FileReader.readAsDataURL で data:... 形式の base64 を埋め込む。
+    //   結果を single JSON ファイルとしてダウンロードさせる。
+    // - インポート: JSON を読み込み、data: URL があれば Blob に復元して IndexedDB に格納。重複は name/size/lastModified で判定して既存があれば更新、なければ追加。
+    // 注意:
+    // - この方式は動画本体を JSON 内に base64 埋め込みするため大容量ファイルではメモリやストレージに負担がかかります。
+    // - 必要に応じて「メタデータのみ」「blob を外す」など拡張できますが、今回は要望どおり「動画やマーカー、タグなどをダウンロードして別端末で同じように見れる」最も直接的な方法を採用しています。
+    //
+
+    // helper: File/Blob -> dataURL
+    function readBlobAsDataURL(blob){
+      return new Promise((resolve, reject) => {
+        try {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = () => reject(fr.error);
+          fr.readAsDataURL(blob);
+        } catch (e) { reject(e); }
+      });
+    }
+
+    // helper: dataURL -> Blob
+    function dataURLtoBlob(dataurl) {
+      // data:[<mime type>][;base64],<data>
+      const parts = dataurl.split(',');
+      const meta = parts[0];
+      const base64 = parts[1];
+      const mimeMatch = meta.match(/data:([^;]+);base64/);
+      const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+      const binary = atob(base64);
+      const len = binary.length;
+      const u8 = new Uint8Array(len);
+      for (let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
+      return new Blob([u8], { type: mime });
+    }
+
+    // export all history + categories -> JSON download
+    exportBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      exportBtn.disabled = true;
+      exportBtn.textContent = 'エクスポート中...';
+      try {
+        await exportHistory();
+      } catch (err) {
+        console.warn('エクスポート失敗', err);
+        alert('エクスポートに失敗しました: ' + (err && err.message ? err.message : String(err)));
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'エクスポート';
+      }
+    });
+
+    async function exportHistory(){
+      // warn: large export may be heavy
+      if (!confirm('履歴（動画本体を含む）を JSON としてエクスポートします。\n大きな動画が含まれるとファイルサイズが非常に大きくなり、処理やダウンロードに時間がかかります。続行しますか？')) {
+        return;
+      }
+
+      const db = await openDB();
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const store = tx.objectStore(STORE_NAME);
+      const all = await getAllFromStore(store);
+      try { await waitForTransactionComplete(tx); } catch(e){}
+
+      const categories = loadUserCategories();
+
+      const out = {
+        version: 1,
+        exportedAt: Date.now(),
+        categories: categories,
+        items: []
+      };
+
+      // Iterate entries and embed blobs as data URLs (if present)
+      for (const it of all) {
+        const obj = {
+          id: it.id,
+          name: it.name,
+          size: it.size,
+          type: it.type,
+          lastModified: it.lastModified || 0,
+          createdAt: it.createdAt || Date.now(),
+          note: it.note || '',
+          categoryIds: Array.isArray(it.categoryIds) ? it.categoryIds.slice() : (it.categoryId ? [it.categoryId] : []),
+          markers: Array.isArray(it.markers) ? it.markers.slice() : (Array.isArray(it.markerTimes) ? it.markerTimes.slice() : []),
+          // blobDataUrl: will be set below (string) or null
+          blobDataUrl: null
+        };
+
+        if (it.blob) {
+          try {
+            // read as data URL
+            const dataUrl = await readBlobAsDataURL(it.blob);
+            obj.blobDataUrl = dataUrl;
+          } catch (err) {
+            console.warn('blob -> dataURL 変換失敗 for id', it.id, err);
+            obj.blobDataUrl = null;
+          }
+        }
+        out.items.push(obj);
+      }
+
+      // stringify
+      const json = JSON.stringify(out);
+      const b = new Blob([json], { type: 'application/json' });
+      const fn = `video-history-export-${(new Date()).toISOString().replace(/[:.]/g,'-')}.json`;
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fn;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 5000);
+      alert('エクスポート完了。ダウンロードした JSON ファイルを別の端末でインポートしてください。');
+    }
+
+    // import button -> file input click
+    importBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      importInput.value = '';
+      importInput.click();
+    });
+
+    importInput.addEventListener('change', async () => {
+      const f = importInput.files && importInput.files[0];
+      if (!f) return;
+      if (!confirm('選択した JSON ファイルから履歴をインポートします。既存の重複は更新されます。続行しますか？')) return;
+      importInput.disabled = true;
+      importBtn.disabled = true;
+      importBtn.textContent = 'インポート中...';
+      try {
+        await importFromFile(f);
+      } catch (err) {
+        console.warn('インポート失敗', err);
+        alert('インポートに失敗しました: ' + (err && err.message ? err.message : String(err)));
+      } finally {
+        importInput.disabled = false;
+        importBtn.disabled = false;
+        importBtn.textContent = 'インポート';
+      }
+    });
+
+    async function importFromFile(file){
+      const text = await (new Response(file)).text(); // File -> text
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (e) {
+        throw new Error('JSON の解析に失敗しました');
+      }
+      if (!parsed || !Array.isArray(parsed.items)) {
+        throw new Error('想定される形式ではありません');
+      }
+
+      const db = await openDB();
+
+      // optional: restore categories
+      if (Array.isArray(parsed.categories)) {
+        try {
+          // overwrite user categories with imported ones (you may adapt this behavior)
+          saveUserCategories(parsed.categories);
+        } catch (e) { console.warn('カテゴリ復元失敗', e); }
+      }
+
+      let added = 0, updated = 0, skipped = 0, failed = 0;
+
+      for (const it of parsed.items) {
+        try {
+          // Build entry object to store
+          const entry = {
+            name: it.name || ('unknown_' + Date.now()),
+            size: it.size || 0,
+            type: it.type || '',
+            lastModified: it.lastModified || 0,
+            blob: null,
+            createdAt: it.createdAt || Date.now(),
+            note: it.note || '',
+            categoryIds: Array.isArray(it.categoryIds) ? it.categoryIds.slice() : [],
+            markers: Array.isArray(it.markers) ? it.markers.slice() : []
+          };
+
+          if (it.blobDataUrl) {
+            try {
+              entry.blob = dataURLtoBlob(it.blobDataUrl);
+            } catch (e) {
+              console.warn('dataURL -> Blob 変換失敗', e);
+              entry.blob = null;
+            }
+          }
+
+          // check for existing by name+size+lastModified
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === entry.name && item.size === entry.size && item.lastModified === entry.lastModified);
+
+          if (match) {
+            // update fields (preserve match.id)
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            // prefer to keep existing blob if imported entry has no blob (avoid wiping)
+            if (entry.blob) {
+              match.blob = entry.blob;
+              match.size = entry.size;
+              match.type = entry.type;
+              match.lastModified = entry.lastModified;
+            }
+            match.name = entry.name;
+            match.note = entry.note;
+            match.categoryIds = entry.categoryIds;
+            match.markers = entry.markers;
+            match.createdAt = entry.createdAt || match.createdAt || Date.now();
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            updated++;
+          } else {
+            // create new
+            try {
+              const tx = db.transaction(STORE_NAME, 'readwrite');
+              const store = tx.objectStore(STORE_NAME);
+              // attempt add; may fail due to quota
+              const addReq = store.add(entry);
+              await promisifyRequest(addReq);
+              await waitForTransactionComplete(tx);
+              added++;
+            } catch (err) {
+              // if quota error and we have blob, retry with blob = null
+              console.warn('新規追加失敗 (可能な限り blob を外して再試行します)', err);
+              try {
+                const tx2 = db.transaction(STORE_NAME, 'readwrite');
+                const store2 = tx2.objectStore(STORE_NAME);
+                const entrySmall = Object.assign({}, entry, { blob: null });
+                const addReq2 = store2.add(entrySmall);
+                await promisifyRequest(addReq2);
+                await waitForTransactionComplete(tx2);
+                added++;
+              } catch (err2) {
+                console.warn('最終的な追加にも失敗しました', err2);
+                failed++;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('エントリのインポート中に例外', e);
+          failed++;
+        }
+      }
+
+      // After import, ensure trimming and UI refresh
+      try {
+        const db2 = await openDB();
+        await trimHistoryLimit(db2);
+      } catch (e) {}
+
+      populateCategorySelect();
+      await renderHistory();
+
+      alert(`インポート完了: 追加 ${added} 件、更新 ${updated} 件、失敗 ${failed} 件、スキップ ${skipped} 件`);
+    }
+
+    //
+    // -----------------------
+    // ここまで: エクスポート / インポート機能
+    // -----------------------
+    //
 
   </script>
 </body>
