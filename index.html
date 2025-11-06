@@ -166,7 +166,7 @@
     /* 名前入力・補足テキストエリアも高さを変える */
     .name-input{width:100%;font-size:calc(var(--hist-font) * 0.95);padding:6px;border-radius:6px;border:1px solid #ddd}
     .note-input{width:100%;font-size:calc(var(--hist-font) * 0.9);padding:6px;border-radius:6px;border:1px solid #ddd;min-height:56px;box-sizing:border-box}
-    .edit-controls{Display:flex;gap:6px;margin-left:6px}
+    .edit-controls{display:flex;gap:6px;margin-left:6px}
     /* select にもレスポンシブサイズを適用 */
     select.sort-select{padding:0 calc(var(--hist-padding-x));border-radius:var(--hist-radius);border:1px solid #ddd;background:#fff;font-size:var(--hist-font);height:var(--hist-size);box-sizing:border-box}
     select.category-select{padding:0 calc(var(--hist-padding-x));border-radius:var(--hist-radius);border:1px solid #ddd;background:#fff;font-size:var(--hist-font);height:var(--hist-size);box-sizing:border-box}
@@ -274,7 +274,6 @@
     .seek::-webkit-slider-thumb{
       -webkit-appearance:none;width:10px;height:10px;border-radius:50%;margin-top:-3px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,0.4);
     }
-    .seek::-webkit-slider-thumb{width:10px;height:10px;border-radius:50%}
     .seek::-webkit-slider-thumb{width:10px;height:10px;border-radius:50%}
     .seek::-moz-range-track{height:4px;border-radius:4px;background:rgba(255,255,255,0.14);}
     .seek::-moz-range-progress{background:rgba(11,116,255,0.9);height:4px;border-radius:4px;}
@@ -426,15 +425,6 @@
             <!-- 項目編集（モーダルを開く） -->
             <button id="editCategoryBtn" class="small-btn" title="項目の名前・色を編集">項目編集</button>
 
-            <!-- エクスポート / インポート 機能を追加 -->
-            <button id="exportBtn" class="small-btn" title="履歴をエクスポート（JSON をダウンロード）">エクスポート</button>
-            <label style="display:inline-flex;align-items:center;gap:6px;">
-              <input type="checkbox" id="includeBlobs" title="動画データ（Blob）を JSON に含める（ファイルが大きくなります）" />
-              <span style="font-size:12px;color:#666">動画を含める</span>
-            </label>
-            <button id="importBtn" class="small-btn" title="履歴を読み込む（JSON）」>インポート</button>
-            <input id="importInput" type="file" accept="application/json" style="display:none" />
-
             <!--
               ※ ユーザー要望：モーダル内で追加/削除を行うため、
                  外側の「新規項目」「項目削除」ボタンは削除しました。
@@ -494,7 +484,7 @@
         <!-- 5秒グループ -->
         <div class="skip-row" aria-label="5秒スキップ">
           <button id="back5Btn" class="skip-btn" aria-label="5秒戻る">« 5s</button>
-          <button id="fwd5Btn" class="skip-btn" aria-label="5秒進む">3s »</button>
+          <button id="fwd5Btn" class="skip-btn" aria-label="5秒進む">5s »</button>
         </div>
 
         <!-- ミラー -->
@@ -582,11 +572,6 @@
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
 
     const historyCountEl = document.getElementById('historyCount');
-
-    const exportBtn = document.getElementById('exportBtn');
-    const importBtn = document.getElementById('importBtn');
-    const importInput = document.getElementById('importInput');
-    const includeBlobsCheckbox = document.getElementById('includeBlobs');
 
     // search elements
     const historySearch = document.getElementById('historySearch');
@@ -1952,7 +1937,7 @@
 
       // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
       markers = Array.isArray(entry.markers) ? entry.markers.slice() :
-            (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
       // --- end change ---
 
       clearMarkerElements();
@@ -2366,238 +2351,6 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
-
-    // ---------- ここからエクスポート / インポート機能の追加 ----------
-
-    // blob -> dataURL (Base64) (FileReader)
-    function blobToDataURL(blob){
-      return new Promise((resolve, reject) => {
-        if (!blob) return resolve(null);
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = (e) => reject(e);
-        reader.readAsDataURL(blob);
-      });
-    }
-
-    // dataURL -> Blob
-    async function dataURLToBlob(dataURL){
-      // fetch supports data URLs in modern browsers
-      try {
-        const res = await fetch(dataURL);
-        const blob = await res.blob();
-        return blob;
-      } catch (e) {
-        // fallback: manual decode (should rarely be needed)
-        const parts = dataURL.split(',');
-        const meta = parts[0];
-        const base64 = parts[1];
-        const bin = atob(base64);
-        const len = bin.length;
-        const arr = new Uint8Array(len);
-        for (let i=0;i<len;i++) arr[i] = bin.charCodeAt(i);
-        // attempt to infer mime
-        const m = /data:([^;]+);base64/.exec(meta);
-        const mime = m ? m[1] : 'application/octet-stream';
-        return new Blob([arr], {type: mime});
-      }
-    }
-
-    // gather export data: categories + entries
-    async function gatherExportData(includeBlobs){
-      const db = await openDB();
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const all = await getAllFromStore(store);
-      try { await waitForTransactionComplete(tx); } catch(e){}
-
-      const cats = loadUserCategories();
-
-      const outEntries = [];
-      for (const it of all){
-        const copy = {
-          name: it.name,
-          size: it.size,
-          type: it.type,
-          lastModified: it.lastModified || 0,
-          createdAt: it.createdAt || Date.now(),
-          note: it.note || '',
-          categoryIds: Array.isArray(it.categoryIds) ? it.categoryIds.slice() : (it.categoryId ? [it.categoryId] : []),
-          markers: Array.isArray(it.markers) ? it.markers.slice() : (Array.isArray(it.markerTimes) ? it.markerTimes.slice() : []),
-          // include blob metadata; optionally include data
-          hasBlob: !!it.blob,
-          blobDataURL: null
-        };
-        if (includeBlobs && it.blob) {
-          try {
-            // convert blob to dataURL (may be large)
-            copy.blobDataURL = await blobToDataURL(it.blob);
-          } catch (e) {
-            console.warn('blob -> dataURL 変換失敗', e);
-            copy.blobDataURL = null;
-          }
-        }
-        outEntries.push(copy);
-      }
-
-      return {
-        exportedAt: Date.now(),
-        categories: cats,
-        entries: outEntries,
-        meta: { generator: 'videoHistoryExport', version: 1 }
-      };
-    }
-
-    // create and trigger download
-    async function exportData(){
-      try {
-        const includeBlobs = !!(includeBlobsCheckbox && includeBlobsCheckbox.checked);
-        // warn if including blobs (可能性: 非常に大きい)
-        if (includeBlobs) {
-          if (!confirm('動画データを JSON に含めるとファイルサイズが非常に大きくなる可能性があります。本当に実行しますか？')) return;
-        }
-
-        // show simple busy UI (alertless) - use subtle status in fileNameEl
-        fileNameEl.textContent = 'エクスポートデータを作成中...';
-
-        const data = await gatherExportData(includeBlobs);
-
-        const json = JSON.stringify(data);
-        const blob = new Blob([json], {type: 'application/json'});
-
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const ts = new Date(data.exportedAt).toISOString().replace(/[:.]/g,'-');
-        a.href = url;
-        a.download = `videoHistory_export_${ts}.json`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(()=>{ try { document.body.removeChild(a); } catch(e){}; URL.revokeObjectURL(url); }, 2000);
-
-        fileNameEl.textContent = 'エクスポートが完了しました';
-      } catch (err) {
-        console.warn('エクスポート失敗', err);
-        alert('エクスポートに失敗しました: ' + (err && err.message ? err.message : String(err)));
-        fileNameEl.textContent = 'エクスポートに失敗しました';
-      } finally {
-        setTimeout(()=>{ if (fileNameEl) fileNameEl.textContent = 'まだファイルが選択されていません'; }, 2400);
-      }
-    }
-
-    // import: merge categories, add entries
-    async function importJSONFile(file){
-      try {
-        if (!file) return;
-        fileNameEl.textContent = 'インポート中...';
-        const text = await file.text();
-        const data = JSON.parse(text);
-
-        // basic structure check
-        if (!data || !Array.isArray(data.entries)) {
-          throw new Error('不正なインポートファイルです');
-        }
-
-        // merge categories: imported categories overwrite same id, otherwise append
-        try {
-          const existing = loadUserCategories();
-          const map = {};
-          for (const c of existing) map[c.id] = c;
-          const importedCats = Array.isArray(data.categories) ? data.categories : [];
-          for (const ic of importedCats) {
-            if (!ic || !ic.id) continue;
-            if (map[ic.id]) {
-              // update name/color
-              map[ic.id].name = ic.name || map[ic.id].name;
-              map[ic.id].color = ic.color || map[ic.id].color || '#ffffff';
-            } else {
-              map[ic.id] = { id: ic.id, name: ic.name || '', color: ic.color || '#ffffff', createdAt: ic.createdAt || Date.now() };
-            }
-          }
-          // create array preserving original order from imported + existing unseen
-          const combined = [];
-          // prefer to keep imported ordering first
-          for (const ic of importedCats) { if (ic && ic.id && map[ic.id]) { combined.push(map[ic.id]); delete map[ic.id]; } }
-          // then remaining existing that were not in imported
-          for (const e of existing) { if (e && e.id && map[e.id]) { combined.push(map[e.id]); delete map[e.id]; } }
-          // leftover (shouldn't be many)
-          for (const k in map) combined.push(map[k]);
-          saveUserCategories(combined);
-        } catch (e) {
-          console.warn('カテゴリマージ失敗', e);
-        }
-
-        // add entries to DB
-        const db = await openDB();
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-
-        // We'll add entries as NEW entries (do not preserve id to avoid collisions)
-        for (const ent of data.entries) {
-          try {
-            const item = {
-              name: ent.name || ('imported_' + Date.now()),
-              size: ent.size || 0,
-              type: ent.type || '',
-              lastModified: ent.lastModified || 0,
-              blob: null,
-              createdAt: ent.createdAt || Date.now(),
-              note: ent.note || '',
-              categoryIds: Array.isArray(ent.categoryIds) ? ent.categoryIds.slice() : [],
-              markers: Array.isArray(ent.markers) ? ent.markers.slice() : [],
-            };
-            // if blob dataURL present, convert
-            if (ent.blobDataURL) {
-              try {
-                const b = await dataURLToBlob(ent.blobDataURL);
-                item.blob = b;
-                // if size missing, try to set
-                try { item.size = b.size || item.size; } catch(e){}
-              } catch (bErr) {
-                console.warn('blob デコード失敗', bErr);
-              }
-            } else {
-              // if original had blob but not included, keep blob null (user will need to re-add file)
-            }
-            // add to store
-            await promisifyRequest(store.add(item));
-          } catch (innerErr) {
-            console.warn('エントリ追加中にエラー', innerErr);
-          }
-        }
-
-        await waitForTransactionComplete(tx);
-        await trimHistoryLimit(db);
-
-        populateCategorySelect();
-        renderHistory();
-
-        fileNameEl.textContent = 'インポート完了';
-        alert('インポートが完了しました。動画データが含まれていないエントリは再度ファイルを開く必要があります。');
-      } catch (err) {
-        console.warn('インポート失敗', err);
-        alert('インポートに失敗しました: ' + (err && err.message ? err.message : String(err)));
-        fileNameEl.textContent = 'インポートに失敗しました';
-      } finally {
-        setTimeout(()=>{ if (fileNameEl) fileNameEl.textContent = 'まだファイルが選択されていません'; }, 2400);
-      }
-    }
-
-    // wire up export/import buttons
-    if (exportBtn) exportBtn.addEventListener('click', (e)=>{ e.stopPropagation(); exportData(); });
-    if (importBtn) importBtn.addEventListener('click', (e)=>{ e.stopPropagation(); importInput.click(); });
-    if (importInput) {
-      importInput.addEventListener('change', (e)=>{
-        const f = importInput.files && importInput.files[0];
-        if (!f) return;
-        if (!confirm('インポートを実行しますか？ 既存のカテゴリはマージされ、履歴は新しいエントリとして追加されます。')) {
-          try { importInput.value = ''; } catch(e){}
-          return;
-        }
-        importJSONFile(f).then(()=>{ try { importInput.value = ''; } catch(e){}; });
-      });
-    }
-
-    // ---------- ここまでエクスポート / インポート機能の追加 ----------
 
   </script>
 </body>
