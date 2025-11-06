@@ -89,6 +89,27 @@
       box-sizing:border-box;
     }
 
+    /* エクスポート/インポートボタン（reload の左側） */
+    #exportBtn, #importBtn {
+      position: absolute;
+      top: 12px;
+      right: 110px;
+      z-index: 1200;
+      height: calc(var(--ctrl-size) * 0.60);
+      min-width: calc(var(--ctrl-size) * 0.60);
+      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
+      font-size: calc(var(--ctrl-font) * 0.80);
+      border-radius: calc(var(--ctrl-radius) * 0.9);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+      background:#fff;
+      border:1px solid #ddd;
+      cursor:pointer;
+    }
+    #importBtn { right: 200px; }
+
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
     #pickerScreen h1,#pickerScreen p{color:inherit}
@@ -386,6 +407,12 @@
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
 
+    <!-- エクスポート / インポート ボタン -->
+    <button id="exportBtn" class="btn muted" type="button" title="履歴をエクスポート" aria-label="履歴をエクスポート">エクスポート</button>
+    <button id="importBtn" class="btn muted" type="button" title="履歴をインポート" aria-label="履歴をインポート">インポート</button>
+    <!-- 隠しファイル入力（インポート用） -->
+    <input id="importFileInput" type="file" accept="application/json" style="display:none" />
+
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
       <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください</p>
@@ -526,6 +553,10 @@
     const fileNameEl = document.getElementById('fileName');
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
+
+    const exportBtn = document.getElementById('exportBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importFileInput = document.getElementById('importFileInput');
 
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
@@ -1937,7 +1968,7 @@
 
       // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
       markers = Array.isArray(entry.markers) ? entry.markers.slice() :
-                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+            (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
       // --- end change ---
 
       clearMarkerElements();
@@ -2351,6 +2382,232 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
+
+    // ---------------------------
+    // ここからエクスポート / インポート機能
+    // ---------------------------
+
+    // Blob -> data URL (base64) に変換
+    function blobToDataURL(blob){
+      return new Promise((resolve, reject) => {
+        if (!blob) return resolve(null);
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = (e) => reject(e);
+        fr.readAsDataURL(blob);
+      });
+    }
+
+    // data URL -> Blob
+    function dataURLToBlob(dataURL){
+      if (!dataURL) return null;
+      const parts = dataURL.split(',');
+      const meta = parts[0] || '';
+      const base64 = parts[1] || '';
+      const matched = /data:([^;]+);base64/.exec(meta);
+      const mime = (matched && matched[1]) ? matched[1] : 'application/octet-stream';
+      const binary = atob(base64);
+      const len = binary.length;
+      const u8 = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        u8[i] = binary.charCodeAt(i);
+      }
+      return new Blob([u8], { type: mime });
+    }
+
+    // Export: 全履歴 + カテゴリを JSON にまとめてダウンロード
+    exportBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        exportBtn.disabled = true;
+        exportBtn.textContent = 'エクスポート中...';
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const all = await getAllFromStore(store);
+        try { await waitForTransactionComplete(tx); } catch(e){}
+
+        const cats = loadUserCategories() || [];
+
+        // エクスポート形式:
+        // {
+        //   meta: { exportedAt: <ms since epoch>, appVersion: 'v1' },
+        //   categories: [ {id,name,color,createdAt}, ... ],
+        //   entries: [ { name,size,type,lastModified,createdAt,note,categoryIds,markers, blobDataUrl|null }, ... ]
+        // }
+        const out = { meta: { exportedAt: Date.now() }, categories: cats.slice(), entries: [] };
+
+        // sequentially convert blobs to data URLs to avoid big concurrent memory usage
+        for (const it of all) {
+          const eobj = {
+            name: it.name || '',
+            size: it.size || 0,
+            type: it.type || '',
+            lastModified: it.lastModified || 0,
+            createdAt: it.createdAt || 0,
+            note: it.note || '',
+            categoryIds: Array.isArray(it.categoryIds) ? it.categoryIds.slice() : (it.categoryId ? [it.categoryId] : []),
+            markers: Array.isArray(it.markers) ? it.markers.slice() : (Array.isArray(it.markerTimes) ? it.markerTimes.slice() : []),
+            blobDataUrl: null
+          };
+          if (it.blob) {
+            try {
+              // convert blob to data URL (base64)
+              eobj.blobDataUrl = await blobToDataURL(it.blob);
+            } catch (err) {
+              console.warn('blob を dataURL に変換できませんでした', err);
+              eobj.blobDataUrl = null;
+            }
+          }
+          out.entries.push(eobj);
+        }
+
+        const filename = 'videoHistory_export_' + (new Date()).toISOString().replace(/[:.]/g,'-') + '.json';
+        const blobOut = new Blob([JSON.stringify(out)], { type: 'application/json' });
+        const url = URL.createObjectURL(blobOut);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url), 3000);
+        alert('エクスポートが完了しました。ファイルを保存してください（サイズが大きくなることがあります）。');
+      } catch (err) {
+        console.error('エクスポートに失敗しました', err);
+        alert('エクスポートに失敗しました：' + (err && err.message ? err.message : String(err)));
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'エクスポート';
+      }
+    });
+
+    // Import: JSON を読み込んでカテゴリとエントリをマージして保存
+    importBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      importFileInput.click();
+    });
+
+    importFileInput.addEventListener('change', async (e) => {
+      const file = importFileInput.files && importFileInput.files[0];
+      if (!file) return;
+      if (!confirm('インポートを開始します。既存のカテゴリは名前でマージされます。よろしいですか？')) {
+        try { importFileInput.value = ''; } catch(e){}
+        return;
+      }
+      try {
+        importBtn.disabled = true;
+        importBtn.textContent = 'インポート中...';
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+
+        // basic validation
+        if (!parsed || !Array.isArray(parsed.entries)) {
+          throw new Error('不正なファイル形式です');
+        }
+
+        // merge categories by name: if same name exists, use existing id; else create new id and add
+        const existingCats = loadUserCategories();
+        const nameToId = {};
+        for (const c of existingCats) nameToId[c.name] = c.id;
+
+        const importedCategories = Array.isArray(parsed.categories) ? parsed.categories.slice() : [];
+        const newCats = existingCats.slice(); // start from existing
+
+        // mapping from incoming category id -> local category id
+        const catIdMap = {};
+
+        for (const ic of importedCategories) {
+          if (!ic || !ic.name) continue;
+          if (nameToId.hasOwnProperty(ic.name)) {
+            catIdMap[ic.id] = nameToId[ic.name];
+            // optionally we could update color if missing; but preserve local
+          } else {
+            // create a new local id without prompting
+            const newId = 'imp_' + Date.now() + '_' + Math.floor(Math.random()*1000);
+            const color = (ic.color && isValidHexColor(ic.color)) ? expandHex(ic.color) : '#ffffff';
+            const newCat = { id: newId, name: ic.name, createdAt: ic.createdAt || Date.now(), color };
+            newCats.push(newCat);
+            nameToId[ic.name] = newId;
+            catIdMap[ic.id] = newId;
+          }
+        }
+
+        // save merged categories
+        saveUserCategories(newCats);
+        populateCategorySelect();
+
+        // Now import entries
+        const db = await openDB();
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+
+        for (const ent of parsed.entries) {
+          try {
+            // map category ids
+            const incomingCids = Array.isArray(ent.categoryIds) ? ent.categoryIds.slice() : [];
+            const mapped = incomingCids.map(cid => (catIdMap[cid] || cid)).filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
+
+            // reconstruct blob if present
+            let blob = null;
+            if (ent.blobDataUrl) {
+              try {
+                blob = dataURLToBlob(ent.blobDataUrl);
+              } catch (err) {
+                console.warn('blob 復元失敗', err);
+                blob = null;
+              }
+            }
+
+            const newEntry = {
+              name: ent.name || ('imported_' + (ent.createdAt || Date.now())),
+              size: ent.size || (blob ? (blob.size || 0) : 0),
+              type: ent.type || (blob ? (blob.type || '') : ''),
+              lastModified: ent.lastModified || 0,
+              blob: blob,
+              createdAt: ent.createdAt || Date.now(),
+              note: ent.note || '',
+              categoryIds: mapped,
+              markers: Array.isArray(ent.markers) ? ent.markers.slice() : []
+            };
+
+            // add to store (autoIncrement assigns id)
+            try {
+              const addReq = store.add(newEntry);
+              await promisifyRequest(addReq);
+            } catch (errAdd) {
+              console.warn('エントリ追加失敗（再試行）', errAdd);
+              // try without blob (容量問題)
+              const newEntrySmall = Object.assign({}, newEntry, { blob: null });
+              const addReq2 = store.add(newEntrySmall);
+              await promisifyRequest(addReq2);
+            }
+
+          } catch (errEnt) {
+            console.warn('エントリのインポート中にエラー', errEnt);
+          }
+        }
+
+        try { await waitForTransactionComplete(tx); } catch(e){}
+
+        // trim if needed
+        await trimHistoryLimit(db);
+
+        alert('インポートが完了しました。履歴を更新します。');
+        renderHistory();
+      } catch (err) {
+        console.error('インポートに失敗しました', err);
+        alert('インポートに失敗しました：' + (err && err.message ? err.message : String(err)));
+      } finally {
+        importBtn.disabled = false;
+        importBtn.textContent = 'インポート';
+        try { importFileInput.value = ''; } catch(e){}
+      }
+    });
+
+    // ---------------------------
+    // エクスポート / インポート機能ここまで
+    // ---------------------------
 
   </script>
 </body>
