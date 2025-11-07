@@ -89,6 +89,23 @@
       box-sizing:border-box;
     }
 
+    /* 追加: キャッシュクリアボタン（reload の左隣に表示） */
+    #clearCacheBtn {
+      position: absolute;
+      top: 12px;
+      right: calc(12px + 48px + 8px); /* reloadBtn の左に並ぶように */
+      z-index: 1200;
+      height: calc(var(--ctrl-size) * 0.60);
+      min-width: calc(var(--ctrl-size) * 0.60);
+      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
+      font-size: calc(var(--ctrl-font) * 0.80);
+      border-radius: calc(var(--ctrl-radius) * 0.9);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+    }
+
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
     #pickerScreen h1,#pickerScreen p{color:inherit}
@@ -439,6 +456,8 @@
   <main id="pickerScreen" class="center" aria-live="polite">
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
+    <!-- 追加: キャッシュ削除ボタン -->
+    <button id="clearCacheBtn" class="btn muted" type="button" title="アプリ内キャッシュを削除します" aria-label="アプリ内キャッシュを削除">キャッシュ削除</button>
 
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
@@ -585,6 +604,7 @@
     const fileNameEl = document.getElementById('fileName');
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
 
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
@@ -744,31 +764,120 @@
       });
     }
 
+    // ---------- 修正済み: deleteEntry (blob を確実に解放する手順を追加) ----------
     async function deleteEntry(id){
       const db = await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx = db.transaction(STORE_NAME,'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.delete(Number(id));
-        req.onsuccess = ()=> {
-          // wait for tx complete for robustness
-          waitForTransactionComplete(tx).then(resolve).catch(reject);
-        };
-        req.onerror = ()=>reject(req.error);
+      return new Promise(async (resolve, reject) => {
+        try {
+          // revoke object URL if currently viewing this entry
+          if (currentHistoryId != null && Number(currentHistoryId) === Number(id)) {
+            try {
+              if (currentObjectUrl) {
+                URL.revokeObjectURL(currentObjectUrl);
+                currentObjectUrl = null;
+              }
+              video.pause();
+              video.removeAttribute('src');
+              video.load();
+            } catch (e) { /* ignore */ }
+            currentHistoryId = null;
+          }
+
+          const tx = db.transaction(STORE_NAME,'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+
+          // first try to get, null out blob to help free space, then delete
+          const getReq = store.get(Number(id));
+          getReq.onsuccess = async () => {
+            try {
+              const val = getReq.result;
+              if (val && val.blob) {
+                // clear blob reference to help browser free space
+                val.blob = null;
+                const putReq = store.put(val);
+                await promisifyRequest(putReq);
+                // wait a tick for tx ordering
+              }
+            } catch (e) {
+              console.warn('blob clear failed', e);
+            } finally {
+              const delReq = store.delete(Number(id));
+              delReq.onsuccess = ()=> {
+                waitForTransactionComplete(tx).then(resolve).catch(reject);
+              };
+              delReq.onerror = ()=> reject(delReq.error);
+            }
+          };
+          getReq.onerror = () => {
+            // fallback: just delete
+            const delReq2 = store.delete(Number(id));
+            delReq2.onsuccess = ()=> {
+              waitForTransactionComplete(tx).then(resolve).catch(reject);
+            };
+            delReq2.onerror = ()=> reject(delReq2.error);
+          };
+        } catch (err) {
+          reject(err);
+        }
       });
     }
 
+    // ---------- 修正済み: clearHistory（データベース丸ごと削除） ----------
     async function clearHistory(){
-      const db = await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx = db.transaction(STORE_NAME,'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.clear();
-        req.onsuccess = ()=> {
-          waitForTransactionComplete(tx).then(resolve).catch(reject);
-        };
-        req.onerror = ()=>reject(req.error);
-      });
+      try{
+        // revoke any currently created objectURL
+        try {
+          if (currentObjectUrl) {
+            try { URL.revokeObjectURL(currentObjectUrl); } catch(e){}
+            currentObjectUrl = null;
+          }
+          video.pause();
+          video.removeAttribute('src');
+          video.load();
+          currentHistoryId = null;
+        } catch (e){}
+
+        // abort pending uploads
+        try {
+          for (const ctrl of uploadControllers.values()) {
+            try { ctrl.aborted = true; } catch(e){}
+          }
+        } catch(e){}
+
+        // delete entire IndexedDB database to ensure blobs are removed
+        await new Promise((resolve, reject) => {
+          try {
+            const delReq = indexedDB.deleteDatabase(DB_NAME);
+            delReq.onsuccess = () => resolve();
+            delReq.onerror = () => reject(delReq.error);
+            delReq.onblocked = () => {
+              console.warn('deleteDatabase blocked');
+              resolve();
+            };
+          } catch (err) {
+            reject(err);
+          }
+        });
+
+        // reset our cached dbPromise so openDB will recreate it
+        dbPromise = null;
+        await openDB();
+
+        // also try clearing Cache Storage (if any service worker caches exist)
+        if ('caches' in window) {
+          try {
+            const keys = await caches.keys();
+            await Promise.all(keys.map(k => caches.delete(k)));
+          } catch (e) { console.warn('Cache Storage clear failed', e); }
+        }
+
+        // refresh UI
+        populateCategorySelect();
+        renderHistory();
+      } catch (err){
+        console.warn('clearHistory error', err);
+        throw err;
+      }
     }
 
     async function trimHistoryLimit(db){
@@ -1638,8 +1747,12 @@
 
     clearHistoryBtn.addEventListener('click', async ()=>{
       if (!confirm('履歴を全て消去しますか？')) return;
-      await clearHistory();
-      renderHistory();
+      try {
+        await clearHistory();
+        renderHistory();
+      } catch (err) {
+        alert('履歴消去中にエラーが発生しました');
+      }
     });
 
     // カテゴリ選択の変更で再描画
@@ -2457,6 +2570,69 @@
         e.stopPropagation();
         if (confirm('ページを再読み込みしますか？ 開いている動画や未保存の変更は失われます。')) {
           location.reload();
+        }
+      });
+    }
+
+    // キャッシュ削除ボタンの動作（データベース削除 + Cache Storage 削除）
+    if (clearCacheBtn) {
+      clearCacheBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('アプリ内のキャッシュ（保存された動画データなど）を完全に削除しますか？ この操作は元に戻せません。')) return;
+
+        try {
+          // revoke any object URLs and stop playback
+          try {
+            if (currentObjectUrl) {
+              URL.revokeObjectURL(currentObjectUrl);
+              currentObjectUrl = null;
+            }
+            video.pause();
+            video.removeAttribute('src');
+            video.load();
+            currentHistoryId = null;
+          } catch (ee) {}
+
+          // abort pending uploads
+          try {
+            for (const ctrl of uploadControllers.values()) {
+              try { ctrl.aborted = true; } catch(e){}
+            }
+          } catch(e){}
+
+          // delete indexedDB database
+          await new Promise((resolve, reject) => {
+            try {
+              const delReq = indexedDB.deleteDatabase(DB_NAME);
+              delReq.onsuccess = () => resolve();
+              delReq.onerror = () => reject(delReq.error);
+              delReq.onblocked = () => {
+                console.warn('deleteDatabase blocked');
+                resolve();
+              };
+            } catch (err) {
+              reject(err);
+            }
+          });
+
+          dbPromise = null;
+          await openDB();
+
+          // clear Cache Storage if available
+          if ('caches' in window) {
+            try {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            } catch (err) { console.warn('Cache Storage clear failed', err); }
+          }
+
+          populateCategorySelect();
+          renderHistory();
+
+          alert('アプリのキャッシュ（IndexedDB と Cache Storage）を削除しました。');
+        } catch (err) {
+          console.warn('clearCacheBtn error', err);
+          alert('キャッシュ削除中にエラーが発生しました: ' + (err && err.message ? err.message : 'Unknown'));
         }
       });
     }
