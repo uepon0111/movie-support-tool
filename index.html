@@ -54,7 +54,8 @@
       --tag-radius: 8px;
     }
 
-    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
+    /* allow page-level scrolling so the history screen can scroll the whole page */
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:auto;background:#111}
     /* NOTE: pick ボタン を段落の下に置くため padding-top を通常に戻す */
     .center{
       min-height:100vh;
@@ -107,7 +108,8 @@
     }
     .history-left{display:flex;align-items:center;gap:8px}
     .history-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    .history-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 320px);overflow:auto;padding:6px;border-radius:8px;background:#fafafa}
+    /* allow page scroll: remove internal max-height/overflow so browser scroll works */
+    .history-list{display:flex;flex-direction:column;gap:8px;padding:6px;border-radius:8px;background:#fafafa}
     /* ここは微修正：複数行タイトルに対応するため top 揃えにする */
     .history-item{display:flex;align-items:flex-start;gap:8px;padding:6px;border-radius:6px;background:transparent; border-bottom: 1px solid #e8e8e8;}
     .history-item:last-child{border-bottom: none;}
@@ -378,42 +380,43 @@
     }
 
     /* =======================
-       アップロード進捗 UI 用の最小スタイル
+       アップロード進捗 UI 用のコンパクトスタイル（省スペース化）
        ======================= */
     .upload-progress-container{
       width:100%;
       max-width:880px;
-      margin-top:12px;
+      margin-top:8px;
       background: #fff;
-      border-radius:12px;
-      padding:12px;
-      box-shadow: 0 6px 18px rgba(11,116,255,0.04);
+      border-radius:10px;
+      padding:8px; /* 小さめに */
+      box-shadow: 0 4px 12px rgba(11,116,255,0.03);
       border: 1px solid #eef4ff;
       box-sizing:border-box;
     }
-    .upload-progress-list{display:flex;flex-direction:column;gap:10px;max-height:260px;overflow:auto;padding-right:6px}
+    .upload-progress-list{display:flex;flex-direction:column;gap:6px;max-height:160px;overflow:auto;padding-right:6px} /* 高さ抑制 */
     .progress-item{
       display:flex;
       align-items:center;
-      gap:10px;
+      gap:8px;
       background: #f8fbff;
-      padding:8px;
-      border-radius:8px;
+      padding:6px; /* 小さく */
+      border-radius:6px;
       box-shadow: inset 0 0 0 1px rgba(11,116,255,0.03);
+      font-size:13px;
     }
     .index-badge{
-      width:34px;height:34px;border-radius:8px;background: rgba(11,116,255,0.12);
+      width:28px;height:28px;border-radius:6px;background: rgba(11,116,255,0.12);
       display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#0b74ff;flex:0 0 auto;
-      font-size:14px;
+      font-size:12px;
     }
-    .progress-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-    .progress-title{font-size:13px;color:#0b2540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .progress-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+    .progress-title{font-size:12px;color:#0b2540;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
     .progress-row{display:flex;align-items:center;gap:8px}
-    .progress-bar-bg{flex:1;background:#eaf2ff;border-radius:10px;height:12px;overflow:hidden;position:relative}
-    .progress-bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#43a2ff,#0b74ff);border-radius:10px;transition:width 240ms linear}
-    .progress-meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 110px}
-    .progress-percent{font-size:13px;color:#08345f;font-weight:700}
-    .progress-size{font-size:12px;color:#556b7b}
+    .progress-bar-bg{flex:1;background:#eaf2ff;border-radius:8px;height:8px;overflow:hidden;position:relative}
+    .progress-bar-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#43a2ff,#0b74ff);border-radius:8px;transition:width 180ms linear}
+    .progress-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:0 0 96px}
+    .progress-percent{font-size:12px;color:#08345f;font-weight:700}
+    .progress-size{font-size:11px;color:#556b7b}
     /* 完了表示 */
     .progress-item.done{background:#f3fbf7}
     .progress-item.done .index-badge{background:rgba(34,197,94,0.10);color:#22c55e}
