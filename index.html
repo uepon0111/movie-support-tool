@@ -89,11 +89,11 @@
       box-sizing:border-box;
     }
 
-    /* 変更: キャッシュクリアボタンを左端に配置 */
+    /* 追加: キャッシュクリアボタン（reload の左隣に表示） */
     #clearCacheBtn {
       position: absolute;
       top: 12px;
-      left: 12px; /* ← 左端に移動 */
+      right: calc(12px + 48px + 8px); /* reloadBtn の左に並ぶように */
       z-index: 1200;
       height: calc(var(--ctrl-size) * 0.60);
       min-width: calc(var(--ctrl-size) * 0.60);
@@ -105,55 +105,6 @@
       justify-content:center;
       box-sizing:border-box;
     }
-
-    /* キャッシュ削除時に表示するオーバーレイ（進捗） */
-    .cache-overlay {
-      position: fixed;
-      left: 50%;
-      top: 18px;
-      transform: translateX(-50%);
-      z-index: 1400;
-      min-width: 320px;
-      max-width: 94%;
-      background: rgba(255,255,255,0.98);
-      color: #111;
-      border-radius: 10px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.24);
-      padding: 12px;
-      display: none;
-      align-items: center;
-      gap: 12px;
-      box-sizing: border-box;
-      border: 1px solid #e6f0ff;
-    }
-    .cache-overlay[aria-hidden="false"] { display:flex; }
-
-    .cache-overlay .status {
-      flex: 1;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    .cache-overlay .status .title { font-weight:700; font-size:14px; color:#08345f; }
-    .cache-overlay .status .msg { font-size:13px; color:#425565; }
-
-    .cache-overlay .progress-bg {
-      width: 100%;
-      height: 10px;
-      background: #eef6ff;
-      border-radius: 8px;
-      overflow: hidden;
-      position: relative;
-    }
-    .cache-overlay .progress-fill {
-      position: absolute;
-      left: 0; top: 0; bottom: 0;
-      width: 0%;
-      background: linear-gradient(90deg,#43a2ff,#0b74ff);
-      transition: width 220ms linear;
-    }
-    .cache-overlay .actions { display:flex; gap:8px; align-items:center; }
-    .cache-overlay .actions .btn { height:34px; padding:6px 10px; min-width:80px; }
 
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
@@ -505,23 +456,8 @@
   <main id="pickerScreen" class="center" aria-live="polite">
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
-    <!-- 追加: キャッシュ削除ボタン（左端に移動済み） -->
+    <!-- 追加: キャッシュ削除ボタン -->
     <button id="clearCacheBtn" class="btn muted" type="button" title="アプリ内キャッシュを削除します" aria-label="アプリ内キャッシュを削除">キャッシュ削除</button>
-
-    <!-- キャッシュ削除時の進捗オーバーレイ -->
-    <div id="cacheOverlay" class="cache-overlay" aria-hidden="true">
-      <div class="status">
-        <div class="title" id="cacheOverlayTitle">キャッシュを削除しています…</div>
-        <div class="msg" id="cacheOverlayMsg">準備中</div>
-        <div class="progress-bg" aria-hidden="true">
-          <div id="cacheProgressFill" class="progress-fill" style="width:0%"></div>
-        </div>
-      </div>
-      <div class="actions">
-        <button id="cacheCancelBtn" class="btn muted" type="button">キャンセル</button>
-        <button id="cacheCloseBtn" class="btn muted" type="button" style="display:none">閉じる</button>
-      </div>
-    </div>
 
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
@@ -669,13 +605,6 @@
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const clearCacheBtn = document.getElementById('clearCacheBtn');
-
-    const cacheOverlay = document.getElementById('cacheOverlay');
-    const cacheOverlayTitle = document.getElementById('cacheOverlayTitle');
-    const cacheOverlayMsg = document.getElementById('cacheOverlayMsg');
-    const cacheProgressFill = document.getElementById('cacheProgressFill');
-    const cacheCancelBtn = document.getElementById('cacheCancelBtn');
-    const cacheCloseBtn = document.getElementById('cacheCloseBtn');
 
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
@@ -1599,7 +1528,7 @@
         }
         nameWrap.appendChild(chips);
 
-        const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
+        const sub = document.createElement('div'); sub.className='sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
 
         const noteDiv = document.createElement('div'); noteDiv.className = 'note';
@@ -2645,166 +2574,65 @@
       });
     }
 
-    /**
-     * 新規: キャッシュ削除処理（進捗表示 + キャンセル対応）
-     *
-     * 挙動:
-     *  - ユーザーが「キャッシュ削除」を押すと確認ダイアログ → 進捗オーバーレイを表示して段階的に削除処理を実行
-     *  - 処理中に「キャンセル」を押すと以後のステップをスキップ（既に行われた操作は取り消せない点に注意）
-     *  - 完了後は UI を更新（カテゴリセレクト、履歴再描画）
-     */
+    // キャッシュ削除ボタンの動作（データベース削除 + Cache Storage 削除）
     if (clearCacheBtn) {
       clearCacheBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm('アプリ内のキャッシュ（保存された動画データなど）を完全に削除しますか？ この操作は元に戻せません。')) return;
 
-        // simple controller
-        const controller = { aborted: false };
-
-        // show overlay
-        cacheOverlay.setAttribute('aria-hidden', 'false');
-        cacheOverlayTitle.textContent = 'キャッシュを削除しています…';
-        cacheOverlayMsg.textContent = '準備中';
-        cacheProgressFill.style.width = '6%';
-        cacheCancelBtn.disabled = false;
-        cacheCloseBtn.style.display = 'none';
-
-        // cancel handler
-        const onCancel = () => {
-          controller.aborted = true;
-          cacheOverlayMsg.textContent = 'キャンセル中…処理を停止します';
-          cacheCancelBtn.disabled = true;
-        };
-        cacheCancelBtn.addEventListener('click', onCancel, { once: true });
-
-        // helper to update progress and check abort
-        function updateProgress(pct, msg) {
-          try {
-            cacheProgressFill.style.width = Math.max(0, Math.min(100, Math.round(pct))) + '%';
-          } catch (e){}
-          if (msg) cacheOverlayMsg.textContent = msg;
-        }
-
         try {
-          // Step 1: revoke object URLs and stop playback
-          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-          updateProgress(6, '再生中の動画を停止しています...');
+          // revoke any object URLs and stop playback
           try {
             if (currentObjectUrl) {
-              try { URL.revokeObjectURL(currentObjectUrl); } catch(e){}
+              URL.revokeObjectURL(currentObjectUrl);
               currentObjectUrl = null;
             }
             video.pause();
             video.removeAttribute('src');
             video.load();
             currentHistoryId = null;
-          } catch (e) {}
-          await new Promise(r => setTimeout(r, 140)); // small visual pause
+          } catch (ee) {}
 
-          // Step 2: abort pending uploads
-          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-          updateProgress(18, '保留中のアップロードを中止しています...');
+          // abort pending uploads
           try {
             for (const ctrl of uploadControllers.values()) {
               try { ctrl.aborted = true; } catch(e){}
             }
-          } catch (e) {}
-          await new Promise(r => setTimeout(r, 160));
+          } catch(e){}
 
-          // Step 3: delete indexedDB database
-          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-          updateProgress(36, 'IndexedDB を削除しています...');
-          try {
-            await new Promise((resolve, reject) => {
-              try {
-                const delReq = indexedDB.deleteDatabase(DB_NAME);
-                delReq.onsuccess = () => resolve();
-                delReq.onerror = () => reject(delReq.error);
-                delReq.onblocked = () => {
-                  console.warn('deleteDatabase blocked');
-                  resolve();
-                };
-              } catch (err) {
-                reject(err);
-              }
-            });
-            dbPromise = null;
-            // quick reopen to reinitialize store shape
-            try { await openDB(); } catch(e){ console.warn('openDB after delete failed', e); }
-          } catch (err) {
-            console.warn('IndexedDB 削除でエラー', err);
-            // continue to try clearing caches
-          }
-          await new Promise(r => setTimeout(r, 180));
+          // delete indexedDB database
+          await new Promise((resolve, reject) => {
+            try {
+              const delReq = indexedDB.deleteDatabase(DB_NAME);
+              delReq.onsuccess = () => resolve();
+              delReq.onerror = () => reject(delReq.error);
+              delReq.onblocked = () => {
+                console.warn('deleteDatabase blocked');
+                resolve();
+              };
+            } catch (err) {
+              reject(err);
+            }
+          });
 
-          // Step 4: clear Cache Storage (service worker caches)
-          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-          updateProgress(68, 'Cache Storage を削除しています...');
+          dbPromise = null;
+          await openDB();
+
+          // clear Cache Storage if available
           if ('caches' in window) {
             try {
               const keys = await caches.keys();
-              let i = 0;
-              for (const k of keys) {
-                if (controller.aborted) break;
-                await caches.delete(k);
-                i++;
-                // update small incremental progress for each cache key
-                const sub = 68 + Math.min(20, Math.round((i / Math.max(1, keys.length)) * 20));
-                updateProgress(sub, `Cache "${k}" を削除中…`);
-              }
-            } catch (e) {
-              console.warn('Cache Storage clear failed', e);
-            }
+              await Promise.all(keys.map(k => caches.delete(k)));
+            } catch (err) { console.warn('Cache Storage clear failed', err); }
           }
-          await new Promise(r => setTimeout(r, 120));
 
-          // Step 5: final UI refresh
-          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-          updateProgress(92, 'ユーザーインターフェースを更新しています...');
-          try {
-            populateCategorySelect();
-            await renderHistory();
-          } catch (e) { console.warn('UI refresh failed', e); }
-          await new Promise(r => setTimeout(r, 140));
-
-          // finished
-          updateProgress(100, '完了しました');
-          cacheOverlayMsg.textContent = 'キャッシュを削除しました';
-          cacheCancelBtn.style.display = 'none';
-          cacheCloseBtn.style.display = '';
-          cacheCloseBtn.disabled = false;
-
-          cacheCloseBtn.addEventListener('click', () => {
-            cacheOverlay.setAttribute('aria-hidden', 'true');
-          }, { once: true });
+          populateCategorySelect();
+          renderHistory();
 
           alert('アプリのキャッシュ（IndexedDB と Cache Storage）を削除しました。');
         } catch (err) {
-          // aborted or error
-          if (err && err.name === 'AbortError') {
-            updateProgress(0, '処理はキャンセルされました');
-            cacheCancelBtn.style.display = 'none';
-            cacheCloseBtn.style.display = '';
-            cacheCloseBtn.disabled = false;
-            cacheCloseBtn.addEventListener('click', () => {
-              cacheOverlay.setAttribute('aria-hidden', 'true');
-            }, { once: true });
-            alert('キャッシュ削除はキャンセルされました。途中まで行われた処理は取り消せません。');
-          } else {
-            console.warn('clearCache error', err);
-            updateProgress(100, 'エラーが発生しました');
-            cacheCancelBtn.style.display = 'none';
-            cacheCloseBtn.style.display = '';
-            cacheCloseBtn.disabled = false;
-            cacheCloseBtn.addEventListener('click', () => {
-              cacheOverlay.setAttribute('aria-hidden', 'true');
-            }, { once: true });
-            alert('キャッシュ削除中にエラーが発生しました: ' + (err && err.message ? err.message : 'Unknown'));
-          }
-        } finally {
-          // cleanup: ensure button removed if still attached
-          try { cacheCancelBtn.removeEventListener('click', onCancel); } catch(e){}
-          // leave overlay visible until user closes (so they can read message)
+          console.warn('clearCacheBtn error', err);
+          alert('キャッシュ削除中にエラーが発生しました: ' + (err && err.message ? err.message : 'Unknown'));
         }
       });
     }
