@@ -419,6 +419,18 @@
     .progress-item.done .index-badge{background:rgba(34,197,94,0.10);color:#22c55e}
     .progress-item.error{background:#fff6f6}
     .progress-item.error .index-badge{background:rgba(220,38,38,0.08);color:#dc2626}
+
+    /* 進捗項目用キャンセルボタンの調整 */
+    .progress-cancel-btn{
+      margin-left:8px;
+      flex:0 0 auto;
+      height:34px;
+      min-width:72px;
+      padding:6px 8px;
+      font-size:13px;
+    }
+
+    .progress-item.cancelled{opacity:0.6}
   </style>
 </head>
 <body>
@@ -630,7 +642,7 @@
 
     let currentObjectUrl = null;
     let currentHistoryId = null;
-    const MAX_HISTORY = 40;
+    const MAX_HISTORY = 1000;
 
     const SPEED_STEP = 0.05;
     const SPEED_MIN = 0.05;
@@ -638,6 +650,9 @@
     let isSeeking = false;
 
     let markers = [];
+
+    // upload controllers map: key -> controller object { aborted: boolean }
+    const uploadControllers = new Map();
 
     // モーダル用の一時カテゴリ配列（編集中に並び替え・追加・削除を行うため）
     let modalUsers = null;
@@ -1067,6 +1082,7 @@
       const db = await openDB();
       const normalized = Array.isArray(newCategoryId) ? newCategoryId.slice() : (newCategoryId ? [newCategoryId] : []);
       // normalize: remove ALL_ID and UNCATEGORIZED_ID from actual assigned list; UNCATEGORIZED == []
+
       const filteredNorm = normalized.filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
 
       // read current entry first to avoid unnecessary writes
@@ -1702,6 +1718,7 @@
               const tmp = modalUsers[idx+1];
               modalUsers[idx+1] = modalUsers[idx];
               modalUsers[idx] = tmp;
+              modalUsers[idx] = tmp;
               renderModalRows();
               saveModalUsersAndRefresh();
             }
@@ -1892,6 +1909,7 @@
      * - ファイル選択後に「自動でビューアに遷移しない」ようにし、選択したファイルを履歴に追加する動作に変更
      * - ドラッグ＆ドロップでアップロード（履歴に追加）できるように pickerScreen にイベントを追加
      * - 進捗 UI を追加（各ファイルごとにインデックス表示）
+     * - 各ファイルごとにキャンセル可能にした（uploadControllers を通じて中断）
      */
 
     // ---------- ここから：進捗UI用ユーティリティ ----------
@@ -1942,24 +1960,48 @@
       main.appendChild(title);
       main.appendChild(row);
 
+      // cancel button
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'small-btn progress-cancel-btn';
+      cancelBtn.textContent = 'キャンセル';
+      cancelBtn.title = 'このファイルのアップロードをキャンセルします';
+
       item.appendChild(idx);
       item.appendChild(main);
+      item.appendChild(cancelBtn);
 
       uploadProgressList.appendChild(item);
 
       return {
         el: item,
+        cancelBtn,
         setPercent(p){
           const pp = Math.max(0, Math.min(100, Math.round(p)));
           barFill.style.width = pp + '%';
           percent.textContent = pp + '%';
         },
+        setTitle(t){
+          try { title.textContent = t; title.title = t; } catch(e){}
+        },
         markDone(){
           this.setPercent(100);
           item.classList.add('done');
+          // hide cancel button on success
+          try { cancelBtn.style.display = 'none'; } catch(e){}
         },
-        markError(){
+        markError(msg){
           item.classList.add('error');
+          if (msg && typeof msg === 'string') {
+            this.setTitle(title.textContent + ' — ' + msg);
+          }
+          try { cancelBtn.style.display = 'none'; } catch(e){}
+        },
+        markCancelled(){
+          item.classList.add('cancelled');
+          item.classList.add('error');
+          this.setPercent(0);
+          try { cancelBtn.style.display = 'none'; } catch(e){}
+          this.setTitle(title.textContent + ' — キャンセルされました');
         },
         remove(){
           try { uploadProgressList.removeChild(item); } catch(e){}
@@ -1974,18 +2016,23 @@
     /**
      * saveFileToHistoryWithProgress:
      * - UI 用にチャンク読みして進捗を報告（既存の saveFileToHistory をそのまま呼ぶ）
-     * - DB への実際の保存は既存関数 saveFileToHistory に委譲（互換性維持）
+     * - options.signal: { aborted: boolean } をチェックして中断できる（簡易な AbortSignal）
      *
      * 注意: チャンク読みは UI のためのもので、DB 保存とは別工程です。
      */
-    async function saveFileToHistoryWithProgress(file, progressCallback){
+    async function saveFileToHistoryWithProgress(file, progressCallback, options = {}){
       try {
         if (progressCallback) progressCallback(0);
-        // 進捗をユーザーに感じさせるためのチャンク読み（既存の保存は最後に呼ぶ）
         const CHUNK = 256 * 1024; // 256KB
         let offset = 0;
+        const sig = options.signal;
         if (file.size > 0) {
           while (offset < file.size) {
+            // check cancellation before reading next chunk
+            if (sig && sig.aborted) {
+              // stop early
+              throw new DOMException('Upload aborted', 'AbortError');
+            }
             const end = Math.min(offset + CHUNK, file.size);
             const chunk = file.slice(offset, end);
             // read chunk (ArrayBuffer) — we don't use data, this is just to report progress
@@ -1999,19 +2046,31 @@
               fr.readAsArrayBuffer(chunk);
             });
             offset = end;
-            // report up to 85-95% for chunk reading progress (leave final part for DB write)
+            // report up to 95% for chunk reading progress (leave final part for DB write)
             if (progressCallback) {
               const frac = offset / file.size;
               const pct = Math.round(Math.min(95, Math.max(1, frac * 90)));
               progressCallback(pct);
             }
+            // check cancellation after read
+            if (sig && sig.aborted) {
+              throw new DOMException('Upload aborted', 'AbortError');
+            }
           }
+        }
+        // check once more before heavy DB work
+        if (sig && sig.aborted) {
+          throw new DOMException('Upload aborted', 'AbortError');
         }
         // Now call the original save function (this may take time for IndexedDB)
         const id = await saveFileToHistory(file);
         if (progressCallback) progressCallback(100);
         return id;
       } catch (err) {
+        if (err && err.name === 'AbortError') {
+          // rethrow or return a specific value the caller will interpret as canceled
+          throw err;
+        }
         if (progressCallback) progressCallback(100);
         console.warn('saveFileToHistoryWithProgress error', err);
         throw err;
@@ -2044,27 +2103,59 @@
       uploadProgressContainer.style.display = '';
 
       const fileArr = Array.from(files);
+      // create controllers for each file so user can cancel while queued or uploading
+      const taskIds = fileArr.map((f, i) => 'task_' + Date.now() + '_' + i + '_' + Math.floor(Math.random()*1000));
       for (let i = 0; i < fileArr.length; i++) {
         const f = fileArr[i];
         const idx = i + 1;
+        const taskId = taskIds[i];
         const ui = createProgressItem(stripExtension(f.name), f.size, idx);
+
+        // controller: simple abort flag
+        const controller = { aborted: false };
+        uploadControllers.set(taskId, controller);
+
+        // wire up cancel button
+        ui.cancelBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (controller.aborted) return;
+          controller.aborted = true;
+          // visually mark cancelling
+          ui.setTitle(stripExtension(f.name) + ' — キャンセル中...');
+          ui.setPercent(0);
+          ui.cancelBtn.disabled = true;
+        });
+
         try {
+          // check if already cancelled before starting
+          if (controller.aborted) {
+            ui.markCancelled();
+            uploadControllers.delete(taskId);
+            continue;
+          }
+
           const id = await saveFileToHistoryWithProgress(f, (pct) => {
             try { ui.setPercent(pct); } catch(e){}
-          });
+          }, { signal: controller });
+
           if (id) {
             savedIds.push(id);
             ui.markDone();
             // small delay so user sees 100% state
             await new Promise(r=>setTimeout(r, 120));
-            // optionally remove completed item after a short time:
-            // ui.remove(); // keep for user to inspect (not auto remove)
+            // leave completed item visible (user can inspect)
           } else {
-            ui.markError();
+            ui.markError('保存されませんでした');
           }
         } catch (err) {
-          console.warn('ファイル保存中にエラー', err);
-          try { ui.markError(); } catch(e){}
+          if (err && err.name === 'AbortError') {
+            ui.markCancelled();
+          } else {
+            console.warn('ファイル保存中にエラー', err);
+            try { ui.markError('エラー'); } catch(e){}
+          }
+        } finally {
+          uploadControllers.delete(taskId);
         }
       }
 
@@ -2114,24 +2205,52 @@
       uploadProgressContainer.style.display = '';
 
       const fileArr = Array.from(files);
+      const taskIds = fileArr.map((f, i) => 'task_' + Date.now() + '_' + i + '_' + Math.floor(Math.random()*1000));
       for (let i = 0; i < fileArr.length; i++) {
         const f = fileArr[i];
         const idx = i + 1;
+        const taskId = taskIds[i];
         const ui = createProgressItem(stripExtension(f.name), f.size, idx);
+
+        const controller = { aborted: false };
+        uploadControllers.set(taskId, controller);
+
+        ui.cancelBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (controller.aborted) return;
+          controller.aborted = true;
+          ui.setTitle(stripExtension(f.name) + ' — キャンセル中...');
+          ui.setPercent(0);
+          ui.cancelBtn.disabled = true;
+        });
+
         try {
+          if (controller.aborted) {
+            ui.markCancelled();
+            uploadControllers.delete(taskId);
+            continue;
+          }
+
           const id = await saveFileToHistoryWithProgress(f, (pct) => {
             try { ui.setPercent(pct); } catch(e){}
-          });
+          }, { signal: controller });
+
           if (id) {
             savedIds.push(id);
             ui.markDone();
             await new Promise(r=>setTimeout(r, 120));
           } else {
-            ui.markError();
+            ui.markError('保存されませんでした');
           }
         } catch (err) {
-          console.warn('ドロップファイル保存失敗', err);
-          try { ui.markError(); } catch(e){}
+          if (err && err.name === 'AbortError') {
+            ui.markCancelled();
+          } else {
+            console.warn('ドロップファイル保存失敗', err);
+            try { ui.markError('エラー'); } catch(e){}
+          }
+        } finally {
+          uploadControllers.delete(taskId);
         }
       }
       if (savedIds.length > 0) {
@@ -2165,7 +2284,7 @@
 
       // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
       markers = Array.isArray(entry.markers) ? entry.markers.slice() :
-                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+            (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
       // --- end change ---
 
       clearMarkerElements();
