@@ -377,6 +377,30 @@
       .history-controls{gap:6px}
     }
 
+    /* =====================================================
+       追加スタイル: 進捗表示関連（ファイル取得の視覚化）
+       ===================================================== */
+    #progressArea{
+      width:100%;max-width:880px;background:#f8f9fb;border:1px solid #e6eefb;padding:12px;border-radius:10px;box-sizing:border-box;
+      display:none;flex-direction:column;gap:10px;
+    }
+    .progress-overall{
+      display:flex;align-items:center;gap:12px;
+    }
+    .progress-bar{
+      flex:1;height:12px;background:#e9eef8;border-radius:8px;overflow:hidden;border:1px solid rgba(11,116,255,0.06);
+    }
+    .progress-fill{
+      height:100%;width:0%;background:linear-gradient(90deg,#0b74ff,#48a6ff);border-radius:8px;transition:width 120ms linear;
+    }
+    .progress-label{min-width:140px;font-size:13px;color:#234}
+    .file-progress-list{display:flex;flex-direction:column;gap:8px;max-height:180px;overflow:auto;padding-right:6px}
+    .file-progress-item{display:flex;gap:8px;align-items:center}
+    .file-progress-item .name{flex:1;font-size:13px;color:#222;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .file-progress-item .file-bar{width:48%;height:8px;background:#eef6ff;border-radius:6px;overflow:hidden;margin-left:8px;border:1px solid rgba(11,116,255,0.06)}
+    .file-progress-item .file-fill{height:100%;width:0%;border-radius:6px;background:linear-gradient(90deg,#0b74ff,#48a6ff);transition:width 120ms linear}
+    .file-progress-item .pct{min-width:48px;text-align:right;font-size:12px;color:#444}
+    .file-size{font-size:12px;color:#666;margin-left:8px;min-width:68px;text-align:right}
   </style>
 </head>
 <body>
@@ -399,6 +423,17 @@
     </div>
 
     <div class="file-info" id="fileName" style="color:#444">まだファイルが選択されていません</div>
+
+    <!-- 追加: 進捗表示エリア -->
+    <div id="progressArea" aria-live="polite" aria-hidden="true">
+      <div class="progress-overall">
+        <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="overallFill" class="progress-fill" style="width:0%"></div>
+        </div>
+        <div id="overallLabel" class="progress-label">0%</div>
+      </div>
+      <div class="file-progress-list" id="fileProgressList"></div>
+    </div>
 
     <div class="history-wrap" id="historyWrap">
       <div class="history-head">
@@ -573,6 +608,12 @@
 
     const historyCountEl = document.getElementById('historyCount');
 
+    // progress UI elements
+    const progressArea = document.getElementById('progressArea');
+    const fileProgressList = document.getElementById('fileProgressList');
+    const overallFill = document.getElementById('overallFill');
+    const overallLabel = document.getElementById('overallLabel');
+
     // search elements
     const historySearch = document.getElementById('historySearch');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -587,6 +628,14 @@
     let isSeeking = false;
 
     let markers = [];
+
+    // progress tracking state
+    let progressState = {
+      totalBytes: 0,
+      loadedBytes: 0,
+      items: {}, // key -> {loaded, total, el}
+      order: [] // keys order for UI
+    };
 
     // モーダル用の一時カテゴリ配列（編集中に並び替え・追加・削除を行うため）
     let modalUsers = null;
@@ -768,7 +817,7 @@
       });
     }
 
-    // --- 新規追加: マーカー保存関連 ---
+    // --- 新規: マーカー保存関連 ---
     function markersEqual(a,b){
       if (!Array.isArray(a)) a = [];
       if (!Array.isArray(b)) b = [];
@@ -1840,14 +1889,269 @@
      * - 複数選択をサポート (input に multiple を追加済み)
      * - ファイル選択後に「自動でビューアに遷移しない」ようにし、選択したファイルを履歴に追加する動作に変更
      * - ドラッグ＆ドロップでアップロード（履歴に追加）できるように pickerScreen にイベントを追加
+     * - 進捗表示（個別/全体）を追加
      */
 
-    // ファイル選択（複数対応）：選択したファイルを履歴に追加し画面遷移しない
+    // ---------- 進捗表示ユーティリティ ----------
+    function resetProgressState(){
+      progressState = { totalBytes: 0, loadedBytes: 0, items: {}, order: [] };
+      fileProgressList.innerHTML = '';
+      overallFill.style.width = '0%';
+      overallLabel.textContent = '0%';
+      progressArea.style.display = 'none';
+      progressArea.setAttribute('aria-hidden','true');
+    }
+
+    function addProgressItem(key, name, totalBytes){
+      // create item DOM
+      const itemWrap = document.createElement('div');
+      itemWrap.className = 'file-progress-item';
+      const nm = document.createElement('div'); nm.className = 'name'; nm.textContent = name;
+      const fileBar = document.createElement('div'); fileBar.className = 'file-bar';
+      const fileFill = document.createElement('div'); fileFill.className = 'file-fill';
+      fileBar.appendChild(fileFill);
+      const pct = document.createElement('div'); pct.className = 'pct'; pct.textContent = '0%';
+      const size = document.createElement('div'); size.className = 'file-size'; size.textContent = formatBytes(totalBytes);
+      itemWrap.appendChild(nm);
+      itemWrap.appendChild(fileBar);
+      itemWrap.appendChild(pct);
+      itemWrap.appendChild(size);
+      fileProgressList.appendChild(itemWrap);
+
+      progressState.items[key] = { loaded: 0, total: totalBytes, el: itemWrap, fileFill, pctEl: pct };
+      progressState.order.push(key);
+      progressState.totalBytes += totalBytes;
+
+      // show progress area
+      progressArea.style.display = 'flex';
+      progressArea.setAttribute('aria-hidden','false');
+    }
+
+    function updateProgressForKey(key, loaded){
+      const it = progressState.items[key];
+      if (!it) return;
+      const prevLoaded = it.loaded || 0;
+      const total = it.total || 1;
+      it.loaded = Math.min(total, loaded);
+      const percent = Math.round((it.loaded / total) * 100);
+      it.fileFill.style.width = percent + '%';
+      it.pctEl.textContent = percent + '%';
+
+      // update overall loaded bytes using delta
+      const delta = it.loaded - prevLoaded;
+      progressState.loadedBytes = Math.min(progressState.totalBytes, (progressState.loadedBytes || 0) + delta);
+
+      // overall percent
+      const overallPct = progressState.totalBytes > 0 ? Math.round((progressState.loadedBytes / progressState.totalBytes) * 100) : 0;
+      overallFill.style.width = overallPct + '%';
+      overallLabel.textContent = overallPct + '%';
+      try {
+        const bar = document.querySelector('.progress-bar');
+        if (bar) bar.setAttribute('aria-valuenow', String(overallPct));
+      } catch (e){}
+    }
+
+    function markItemDone(key){
+      const it = progressState.items[key];
+      if (!it) return;
+      updateProgressForKey(key, it.total);
+    }
+
+    // ---------- ファイル読み取り（チャンク）で進捗を得る ----------
+    async function streamReadWithProgress(file, onProgress){
+      if (!file || typeof file.size !== 'number') return;
+      const total = file.size;
+      if (!onProgress) return;
+      // Try using stream() if available (does not allocate full file)
+      if (file.stream && typeof file.stream === 'function') {
+        try {
+          const reader = file.stream().getReader();
+          let loaded = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            // value is a Uint8Array or similar
+            const chunkLen = (value && (value.byteLength || value.length)) ? (value.byteLength || value.length) : 0;
+            loaded += chunkLen;
+            onProgress(loaded, total);
+          }
+          onProgress(total, total);
+          return;
+        } catch (e) {
+          // fallback to slice+FileReader
+          console.warn('file.stream() 読み込みでエラー (fallback):', e);
+        }
+      }
+
+      // Fallback: read by slices using FileReader to avoid allocating whole file
+      const CHUNK = 1024 * 1024; // 1MB
+      let offset = 0;
+      let loaded = 0;
+      while (offset < total) {
+        const end = Math.min(offset + CHUNK, total);
+        const blobSlice = file.slice(offset, end);
+        const buffer = await new Promise((resolve, reject) => {
+          const fr = new FileReader();
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = () => reject(fr.error);
+          fr.readAsArrayBuffer(blobSlice);
+        });
+        const chunkLen = buffer ? buffer.byteLength : (end - offset);
+        loaded += chunkLen;
+        offset = end;
+        onProgress(loaded, total);
+      }
+      onProgress(total, total);
+    }
+
+    // ---------- 既存の保存関数を進捗対応に（第2引数: onProgress） ----------
+    async function saveFileToHistory(file, progressCallback){
+      try{
+        const db = await openDB();
+
+        // OPTIONAL: show progress by reading file stream if progressCallback provided.
+        if (progressCallback && typeof progressCallback === 'function') {
+          // create a key for this file progress item (use time-based unique)
+          const key = 'p_' + Date.now() + '_' + Math.floor(Math.random()*100000);
+          addProgressItem(key, file.name || 'unknown', file.size || 0);
+          // track previous loaded for delta logic
+          let lastLoaded = 0;
+          // wrapper to update UI
+          const onChunk = (loaded, total) => {
+            // loaded is bytes read so far
+            lastLoaded = loaded;
+            updateProgressForKey(key, loaded);
+          };
+          try {
+            await streamReadWithProgress(file, onChunk);
+          } catch (err) {
+            console.warn('streamReadWithProgress failed', err);
+            // attempt one last callback to mark as done
+            updateProgressForKey(key, file.size || 0);
+          }
+          // after reading mark item done (ensures UI reaches 100%)
+          markItemDone(key);
+        }
+
+        // --- 既存チェック（readonly） ---
+        try {
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+          if (match) {
+            // 更新 (createdAt) は readwrite で行う
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            match.createdAt = Date.now();
+            // migrate legacy categoryId -> categoryIds
+            if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
+              match.categoryIds = match.categoryId ? [match.categoryId] : [];
+              delete match.categoryId;
+            }
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            // トリムはバックグラウンドで行う（await しても良い）
+            trimHistoryLimit(db).catch(()=>{});
+            return match.id;
+          }
+        } catch (e) {
+          // 既存チェック失敗しても保存自体を試みる（ログだけ）
+          console.warn('既存チェックに失敗しました（続行します）', e);
+        }
+
+        // --- 新規追加（readwrite） ---
+        // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
+        const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
+        const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
+
+        const entry = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified || 0,
+          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
+          createdAt: Date.now(),
+          note: '', // 新規: 補足フィールドを追加（空文字で初期化）
+          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
+          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
+        };
+
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const addReq = store.add(entry);
+          const id = await promisifyRequest(addReq);
+          await waitForTransactionComplete(tx);
+          // trim を同期的に実行（非致命的）
+          await trimHistoryLimit(db);
+          return id;
+        } catch (err) {
+          console.warn('最初の追加でエラー', err);
+          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
+          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
+            try {
+              // 古いものをいくつか削除して再挑戦
+              const txr2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = txr2.objectStore(STORE_NAME);
+              const all = await getAllFromStore(store2);
+              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
+              // 古いものを 3 件まで削除
+              const remove = sorted.slice(0, Math.min(3, sorted.length));
+              for (const it of remove) store2.delete(it.id);
+              await waitForTransactionComplete(txr2);
+            } catch (cleanupErr) {
+              console.warn('クリーンアップ中にエラー', cleanupErr);
+            }
+            // blob を null にして保存（容量を節約）
+            try {
+              const tx2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = tx2.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq2 = store2.add(entrySmall);
+              const id2 = await promisifyRequest(addReq2);
+              await waitForTransactionComplete(tx2);
+              await trimHistoryLimit(db);
+              return id2;
+            } catch (finalErr) {
+              console.warn('最終的な追加にも失敗しました', finalErr);
+              return null;
+            }
+          } else {
+            // その他のエラー: 可能なら blob を外して保存
+            try {
+              const tx3 = db.transaction(STORE_NAME, 'readwrite');
+              const store3 = tx3.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq3 = store3.add(entrySmall);
+              const id3 = await promisifyRequest(addReq3);
+              await waitForTransactionComplete(tx3);
+              await trimHistoryLimit(db);
+              return id3;
+            } catch (err2) {
+              console.warn('blob を外しても保存失敗', err2);
+              return null;
+            }
+          }
+        }
+      }catch(err){ console.warn('保存に失敗しました', err); return null; }
+    }
+
+    // ---------- file input change handler: progress-aware ----------
     fileInput.addEventListener('change', async () => {
       const files = fileInput.files;
       if (!files || files.length === 0) {
         fileNameEl.textContent = 'まだファイルが選択されていません';
         return;
+      }
+
+      // reset progress UI
+      resetProgressState();
+
+      // compute total bytes for overall progress
+      for (const f of Array.from(files)) {
+        progressState.totalBytes += (f.size || 0);
       }
 
       // 表示は簡易に（単数は詳細、複数は個数表示）
@@ -1860,9 +2164,17 @@
 
       // 保存処理（順次）
       const savedIds = [];
+      let idx = 0;
       for (const f of Array.from(files)) {
+        idx++;
+        const key = 'file_' + idx + '_' + (f.name || '').slice(0,20);
+        addProgressItem(key, f.name || ('file ' + idx), f.size || 0);
         try {
-          const id = await saveFileToHistory(f);
+          // call saveFileToHistory with a progressCallback for per-file updates
+          const id = await saveFileToHistory(f, (loaded, total) => {
+            // loaded,total in bytes
+            updateProgressForKey(key, loaded);
+          });
           if (id) savedIds.push(id);
         } catch (err) {
           console.warn('ファイル保存中にエラー', err);
@@ -1877,6 +2189,18 @@
         currentHistoryId = savedIds[savedIds.length - 1];
       }
       renderHistory();
+
+      // optionally hide progress after short delay
+      setTimeout(() => {
+        // keep area visible if still loading; but after done hide
+        progressArea.style.display = 'none';
+        progressArea.setAttribute('aria-hidden','true');
+        // reset internal state so next selection starts fresh
+        progressState = { totalBytes: 0, loadedBytes: 0, items:{}, order:[] };
+        fileProgressList.innerHTML = '';
+        overallFill.style.width = '0%';
+        overallLabel.textContent = '0%';
+      }, 800);
     });
 
     // ドラッグ＆ドロップ対応: pickerScreen 上でのドロップを受けてファイルを履歴へ追加
@@ -1896,6 +2220,12 @@
       const files = dt.files;
       if (!files || files.length === 0) return;
 
+      // reset progress UI
+      resetProgressState();
+      for (const f of Array.from(files)) {
+        progressState.totalBytes += (f.size || 0);
+      }
+
       if (files.length === 1) {
         const f = files[0];
         fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
@@ -1904,9 +2234,15 @@
       }
 
       const savedIds = [];
+      let idx = 0;
       for (const f of Array.from(files)) {
+        idx++;
+        const key = 'drop_' + idx + '_' + (f.name || '').slice(0,20);
+        addProgressItem(key, f.name || ('file ' + idx), f.size || 0);
         try {
-          const id = await saveFileToHistory(f);
+          const id = await saveFileToHistory(f, (loaded, total) => {
+            updateProgressForKey(key, loaded);
+          });
           if (id) savedIds.push(id);
         } catch (err) {
           console.warn('ドロップファイル保存失敗', err);
@@ -1916,6 +2252,15 @@
         currentHistoryId = savedIds[savedIds.length - 1];
       }
       renderHistory();
+
+      setTimeout(() => {
+        progressArea.style.display = 'none';
+        progressArea.setAttribute('aria-hidden','true');
+        progressState = { totalBytes: 0, loadedBytes: 0, items:{}, order:[] };
+        fileProgressList.innerHTML = '';
+        overallFill.style.width = '0%';
+        overallLabel.textContent = '0%';
+      }, 800);
     }, {passive:false});
 
     async function openFromHistory(id){
@@ -2243,114 +2588,6 @@
     * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
     * （サムネイル生成のみ削除済み）
     */
-    async function saveFileToHistory(file){
-      try{
-        const db = await openDB();
-
-        // --- 既存チェック（readonly） ---
-        try {
-          const txr = db.transaction(STORE_NAME, 'readonly');
-          const storer = txr.objectStore(STORE_NAME);
-          const all = await getAllFromStore(storer);
-          try { await waitForTransactionComplete(txr); } catch(e){}
-          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
-          if (match) {
-            // 更新 (createdAt) は readwrite で行う
-            const txu = db.transaction(STORE_NAME, 'readwrite');
-            const storeu = txu.objectStore(STORE_NAME);
-            match.createdAt = Date.now();
-            // migrate legacy categoryId -> categoryIds
-            if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
-              match.categoryIds = match.categoryId ? [match.categoryId] : [];
-              delete match.categoryId;
-            }
-            storeu.put(match);
-            await waitForTransactionComplete(txu);
-            // トリムはバックグラウンドで行う（await しても良い）
-            trimHistoryLimit(db).catch(()=>{});
-            return match.id;
-          }
-        } catch (e) {
-          // 既存チェック失敗しても保存自体を試みる（ログだけ）
-          console.warn('既存チェックに失敗しました（続行します）', e);
-        }
-
-        // --- 新規追加（readwrite） ---
-        // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
-        const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
-        const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
-
-        const entry = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified || 0,
-          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
-          createdAt: Date.now(),
-          note: '', // 新規: 補足フィールドを追加（空文字で初期化）
-          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
-          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
-        };
-
-        try {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          const addReq = store.add(entry);
-          const id = await promisifyRequest(addReq);
-          await waitForTransactionComplete(tx);
-          // trim を同期的に実行（非致命的）
-          await trimHistoryLimit(db);
-          return id;
-        } catch (err) {
-          console.warn('最初の追加でエラー', err);
-          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
-          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
-            try {
-              // 古いものをいくつか削除して再挑戦
-              const txr2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = txr2.objectStore(STORE_NAME);
-              const all = await getAllFromStore(store2);
-              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
-              // 古いものを 3 件まで削除
-              const remove = sorted.slice(0, Math.min(3, sorted.length));
-              for (const it of remove) store2.delete(it.id);
-              await waitForTransactionComplete(txr2);
-            } catch (cleanupErr) {
-              console.warn('クリーンアップ中にエラー', cleanupErr);
-            }
-            // blob を null にして保存（容量を節約）
-            try {
-              const tx2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = tx2.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq2 = store2.add(entrySmall);
-              const id2 = await promisifyRequest(addReq2);
-              await waitForTransactionComplete(tx2);
-              await trimHistoryLimit(db);
-              return id2;
-            } catch (finalErr) {
-              console.warn('最終的な追加にも失敗しました', finalErr);
-              return null;
-            }
-          } else {
-            // その他のエラー: 可能なら blob を外して保存
-            try {
-              const tx3 = db.transaction(STORE_NAME, 'readwrite');
-              const store3 = tx3.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq3 = store3.add(entrySmall);
-              const id3 = await promisifyRequest(addReq3);
-              await waitForTransactionComplete(tx3);
-              await trimHistoryLimit(db);
-              return id3;
-            } catch (err2) {
-              console.warn('blob を外しても保存失敗', err2);
-              return null;
-            }
-          }
-        }
-      }catch(err){ console.warn('保存に失敗しました', err); return null; }
-    }
 
   </script>
 </body>
