@@ -52,6 +52,9 @@
       --tag-padding-y: 4px;
       --tag-padding-x: 8px;
       --tag-radius: 8px;
+
+      /* 変更: コンパクト化倍率を少し強めに（指定ボタン群用） */
+      --ctrl-compact-scale: 0.72; /* ここを小さめにして指定ボタンを「もう少し小さく」 */
     }
 
     html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
@@ -396,14 +399,34 @@
       background:rgba(0,0,0,0.24);
       backdrop-filter:blur(6px);
       z-index:11;
-      align-items:center;
+      align-items:flex-end; /* 右端に寄せる */
     }
     .overlay-right .btn{padding:8px 10px;border-radius:8px;font-size:14px}
     .speed-display{min-width:64px;text-align:center;color:#fff;font-weight:600}
 
+    /* 右端揃えにしたので内部グループのレイアウトを右寄せにする */
+    .overlay-right > div { display:flex; gap:8px; align-items:center; justify-content:flex-end; }
+
     /* マーカー操作ボタン（追加） */
     .marker-controls{display:flex;gap:6px;align-items:center}
     .marker-controls .marker-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer}
+
+    /* A/B ループ用ボタン（マーカー設置ボタン類の下に配置） */
+    .ab-controls{display:flex;gap:6px;align-items:center;margin-top:6px}
+    .ab-controls .ab-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer;min-width:44px}
+
+    /* A/B のシーク上マーカー表示 */
+    .ab-marker-a, .ab-marker-b {
+      position:absolute;
+      width:4px;
+      height:16px;
+      border-radius:2px;
+      pointer-events:none;
+      transform:none;
+      box-shadow:0 0 8px rgba(0,0,0,0.35);
+    }
+    .ab-marker-a{ background: #22c55e; } /* A: 緑 */
+    .ab-marker-b{ background: #ef4444; } /* B: 赤 */
 
     /* ======================================================
        ここから：ボタン群のサイズだけをレスポンシブに変更
@@ -427,6 +450,43 @@
     .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding_y)); }
     .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
     .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
+
+    /* --- ここから今回の追加: 指定したボタン群を少し小さくする（上書き） --- */
+
+    /* 影響対象:
+       - .skip-btn（3s/5s戻す/進む／mirror は同クラス）
+       - ミラーは #mirrorBtn（.skip-btn と同じなので含まれる）
+       - 再生速度調整ボタン（.overlay-right .btn）
+       - マーカーボタン（.marker-btn）
+       - A/B 関連ボタン（.ab-btn）
+    */
+    .skip-btn,
+    #mirrorBtn,
+    .marker-btn,
+    .overlay-right .btn,
+    .ab-btn {
+      height: calc(var(--ctrl-size) * var(--ctrl-compact-scale));
+      min-width: calc(var(--ctrl-size) * var(--ctrl-compact-scale));
+      padding: 0 calc(var(--ctrl-padding-x) * 0.7);
+      font-size: calc(var(--ctrl-font) * var(--ctrl-compact-scale));
+      border-radius: calc(var(--ctrl-radius) * var(--ctrl-compact-scale));
+      /* 明示的に display/align を保持 */
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+    }
+
+    /* marker-controls 内の .marker-btn がより具体的に定義されているので重要度を上げる */
+    .marker-controls .marker-btn {
+      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
+    }
+
+    /* ab-controls 内の .ab-btn も少し余白を調整 */
+    .ab-controls .ab-btn {
+      padding: 0 calc(var(--ctrl-padding-x) * 0.65);
+    }
+    /* --- ここまで今回の追加 --- */
 
     /* 検索バー用（history search） */
     .history-search{display:flex;gap:8px;align-items:center;margin:8px 0 8px}
@@ -648,7 +708,7 @@
 
       <!-- 右上：速度操作（再生ボタンの下） -->
       <div class="overlay-right" id="overlayRight" aria-hidden="false">
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
           <button id="speedMinus" class="btn" aria-label="速度を下げる">−</button>
           <div id="speedDisplay" class="speed-display">1.00x</div>
           <button id="speedPlus" class="btn" aria-label="速度を上げる">＋</button>
@@ -658,6 +718,14 @@
           <button id="markerJump" class="marker-btn" aria-label="マーカーへジャンプ">&gt;</button>
           <button id="markerAdd" class="marker-btn" aria-label="マーカーを追加">+</button>
           <button id="markerRemove" class="marker-btn" aria-label="マーカーを削除">-</button>
+        </div>
+
+        <!-- ここに A/B 関連ボタンを配置（マーカー設置ボタン類の下） -->
+        <div class="ab-controls" role="group" aria-label="A/B ループ操作">
+          <!-- 初期表示を要望に合わせて A / オフ / C に設定 -->
+          <button id="abSetBtn" class="ab-btn" aria-label="A/B を設定">A</button>
+          <button id="abLoopBtn" class="ab-btn" aria-pressed="false" aria-label="A/B ループ オン/オフ">オフ</button>
+          <button id="abResetBtn" class="ab-btn" aria-label="A/B リセット">C</button>
         </div>
       </div>
     </div>
@@ -714,6 +782,10 @@
     const markerRemoveBtn = document.getElementById('markerRemove');
     const markerLayer = document.getElementById('markerLayer');
 
+    const abSetBtn = document.getElementById('abSetBtn');
+    const abLoopBtn = document.getElementById('abLoopBtn');
+    const abResetBtn = document.getElementById('abResetBtn');
+
     const categorySelect = document.getElementById('categorySelect');
     const editCategoryBtn = document.getElementById('editCategoryBtn');
     const addCategoryInModal = document.getElementById('addCategoryInModal');
@@ -741,6 +813,11 @@
     let isSeeking = false;
 
     let markers = [];
+
+    // A/B loop state
+    let abA = null; // number (seconds) or null
+    let abB = null; // number (seconds) or null
+    let loopEnabled = false;
 
     // upload controllers map: key -> controller object { aborted: boolean }
     const uploadControllers = new Map();
@@ -1014,7 +1091,7 @@
       });
     }
 
-    // --- 新規追加: マーカー保存関連 ---
+    // --- 新規: マーカー保存関連 ---
     function markersEqual(a,b){
       if (!Array.isArray(a)) a = [];
       if (!Array.isArray(b)) b = [];
@@ -2077,6 +2154,12 @@
         try { await video.play(); } catch (err) { console.warn('自動再生できませんでした:', err); }
       }
 
+      // Reset A/B when opening a new file (keeps behavior predictable per file)
+      abA = null;
+      abB = null;
+      loopEnabled = false;
+      updateABUI();
+
       updateToggleButton();
       updateSpeedDisplay();
 
@@ -2473,6 +2556,12 @@
 
       clearMarkerElements();
 
+      // reset AB when opening a new item (predictable per-file behavior)
+      abA = null;
+      abB = null;
+      loopEnabled = false;
+      updateABUI();
+
       await openViewer(true);
     }
 
@@ -2581,6 +2670,12 @@
       markers = [];
       clearMarkerElements();
 
+      // reset A/B loop state when returning to picker
+      abA = null;
+      abB = null;
+      loopEnabled = false;
+      updateABUI();
+
       // ミラー状態リセット（見た目を統一）
       if (video.classList.contains('mirrored')) {
         video.classList.remove('mirrored');
@@ -2591,12 +2686,407 @@
       if (reloadBtn) reloadBtn.style.display = '';
     });
 
+    // A/B helpers
+    function formatTimeForLabel(sec){
+      if (!isFinite(sec)) return '0:00';
+      return (function(realSec){
+        if (!isFinite(realSec)) return '0:00';
+        const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
+        const mm = Math.floor(realSec / 60).toString();
+        return `${mm}:${ss}`;
+      })(sec);
+    }
+
+    function updateABUI(){
+      // Update the A/B set button label and loop button
+      // 要望: A を指定する段階は「A」、B を指定する段階は「B」と表示
+      if (abA === null) {
+        abSetBtn.textContent = 'A';
+      } else if (abA !== null && abB === null) {
+        abSetBtn.textContent = 'B';
+      } else {
+        // both set - show A as the default action to allow re-set
+        abSetBtn.textContent = 'A';
+      }
+      // loop button: 表示は「オン」「オフ」
+      abLoopBtn.setAttribute('aria-pressed', loopEnabled ? 'true' : 'false');
+      abLoopBtn.textContent = loopEnabled ? 'オン' : 'オフ';
+
+      // ABリセットボタンは常に「C」
+      abResetBtn.textContent = 'C';
+
+      // visually update AB markers on seek bar
+      renderMarkers();
+    }
+
+    // set/reset A/B via a single button: first press sets A, next press sets B, after both are set the button will show both.
+    abSetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!video || !isFinite(video.currentTime)) {
+        alert('動画が読み込まれていません');
+        return;
+      }
+      const t = Number(video.currentTime || 0);
+      if (abA === null) {
+        // set A
+        abA = Math.max(0, t);
+        abB = null;
+        loopEnabled = false; // require explicit loop enable
+        updateABUI();
+        return;
+      }
+      if (abA !== null && abB === null) {
+        // set B
+        // Ensure B is greater than A by a small epsilon
+        const EPS = 0.05;
+        if (t <= abA + EPS) {
+          alert('B は A よりも後の位置に設定してください');
+          return;
+        }
+        abB = t;
+        // default: keep loop disabled until user toggles it
+        updateABUI();
+        return;
+      }
+      // If both were already set, pressing again will reset A to current position and clear B (allowing re-set)
+      if (abA !== null && abB !== null) {
+        abA = Math.max(0, t);
+        abB = null;
+        loopEnabled = false;
+        updateABUI();
+        return;
+      }
+    });
+
+    abLoopBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // toggle loop but only effective when A and B are set
+      if (!abA || !abB) {
+        alert('まず A と B を設定してください（A を設定したら次に B を設定します）');
+        return;
+      }
+      loopEnabled = !loopEnabled;
+      updateABUI();
+    });
+
+    abResetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      abA = null;
+      abB = null;
+      loopEnabled = false;
+      updateABUI();
+    });
+
+    function clearMarkerElements(){
+      while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
+    }
+
+    function renderMarkers(){
+      clearMarkerElements();
+      if (!markers && abA == null && abB == null) return;
+      const dur = (video && isFinite(video.duration)) ? video.duration : null;
+      if (!dur) return;
+
+      const seekRect = seekBar.getBoundingClientRect();
+      const layerRect = markerLayer.getBoundingClientRect();
+      if (seekRect.width <= 0) return;
+
+      const markerW = 2;
+      const markerH = 12;
+
+      // normal markers
+      if (markers && markers.length > 0) {
+        markers.forEach((t, idx) => {
+          const el = document.createElement('div');
+          el.className = 'marker';
+          el.setAttribute('role','presentation');
+          el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
+
+          const frac = Math.max(0, Math.min(1, t / dur));
+          const leftOnSeekPx = frac * seekRect.width;
+          const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
+          const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
+
+          el.style.left = `${Math.round(leftPx)}px`;
+          el.style.top = `${Math.round(topPx)}px`;
+          markerLayer.appendChild(el);
+        });
+      }
+
+      // A/B markers (if set)
+      try {
+        if (abA != null && isFinite(abA)) {
+          const t = Math.max(0, Math.min(dur, abA));
+          const frac = Math.max(0, Math.min(1, t / dur));
+          const leftOnSeekPx = frac * seekRect.width;
+          const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (4 / 2);
+          const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (16 / 2);
+          const aEl = document.createElement('div');
+          aEl.className = 'ab-marker-a';
+          aEl.setAttribute('role','presentation');
+          aEl.setAttribute('aria-label', `A: ${formatTimeForLabel(abA)}`);
+          aEl.style.left = `${Math.round(leftPx)}px`;
+          aEl.style.top = `${Math.round(topPx)}px`;
+          markerLayer.appendChild(aEl);
+        }
+        if (abB != null && isFinite(abB)) {
+          const t = Math.max(0, Math.min(dur, abB));
+          const frac = Math.max(0, Math.min(1, t / dur));
+          const leftOnSeekPx = frac * seekRect.width;
+          const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (4 / 2);
+          const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (16 / 2);
+          const bEl = document.createElement('div');
+          bEl.className = 'ab-marker-b';
+          bEl.setAttribute('role','presentation');
+          bEl.setAttribute('aria-label', `B: ${formatTimeForLabel(abB)}`);
+          bEl.style.left = `${Math.round(leftPx)}px`;
+          bEl.style.top = `${Math.round(topPx)}px`;
+          markerLayer.appendChild(bEl);
+        }
+      } catch (err) {
+        // ignore render errors
+      }
+    }
+
+    markerAddBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!video || !isFinite(video.duration)) { return; }
+      const t = Number(video.currentTime || 0);
+      const EPS = 0.1;
+      const exist = markers.some(m => Math.abs(m - t) < EPS);
+      if (exist) {
+        return;
+      }
+      markers.push(t);
+      markers.sort((a,b)=>a-b);
+      renderMarkers();
+
+      // 自動保存: 現在開いている履歴があれば即時保存
+      try {
+        if (currentHistoryId != null) {
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
+        }
+      } catch (err) { console.warn('marker add save err', err); }
+    });
+
+    function findPreviousMarkerIndex(referenceTime) {
+      if (!markers || markers.length === 0) return -1;
+      const EPS = 1e-6;
+      let idx = -1;
+      for (let i = 0; i < markers.length; i++){
+        if (markers[i] <= referenceTime - EPS) idx = i;
+        else break;
+      }
+      return idx;
+    }
+
+    markerJumpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) return;
+      video.currentTime = markers[idx];
+      const pct = (video.currentTime / video.duration) * 100;
+      seekBar.value = pct;
+    });
+
+    markerRemoveBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!markers || markers.length === 0) return;
+      if (!video || !isFinite(video.duration)) return;
+      const ref = Number(video.currentTime || 0);
+      const idx = findPreviousMarkerIndex(ref);
+      if (idx === -1) {
+        return;
+      }
+      markers.splice(idx, 1);
+      renderMarkers();
+
+      // 自動保存: 削除後すぐに保存
+      try {
+        if (currentHistoryId != null) {
+          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
+        }
+      } catch (err) { console.warn('marker remove save err', err); }
+    });
+
+    function repositionMarkerLayer(){
+      renderMarkers();
+    }
+
+    function formatTimeForLabel(sec){
+      if (!isFinite(sec)) return '0:00';
+      return (function(realSec){
+        if (!isFinite(realSec)) return '0:00';
+        const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
+        const mm = Math.floor(realSec / 60).toString();
+        return `${mm}:${ss}`;
+      })(sec);
+    }
+
+    video.addEventListener('loadeddata', () => { renderMarkers(); });
+    video.addEventListener('seeked', () => { renderMarkers(); });
+    window.addEventListener('resize', () => { renderMarkers(); });
+
+    /**
+    * 以下は履歴保存処理（saveFileToHistory）です。
+    * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
+    * （サムネイル生成のみ削除済み）
+    */
+    async function saveFileToHistory(file){
+      try{
+        const db = await openDB();
+
+        // --- 既存チェック（readonly） ---
+        try {
+          const txr = db.transaction(STORE_NAME, 'readonly');
+          const storer = txr.objectStore(STORE_NAME);
+          const all = await getAllFromStore(storer);
+          try { await waitForTransactionComplete(txr); } catch(e){}
+          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
+          if (match) {
+            // 更新 (createdAt) は readwrite で行う
+            const txu = db.transaction(STORE_NAME, 'readwrite');
+            const storeu = txu.objectStore(STORE_NAME);
+            match.createdAt = Date.now();
+            // migrate legacy categoryId -> categoryIds
+            if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
+              match.categoryIds = match.categoryId ? [match.categoryId] : [];
+              delete match.categoryId;
+            }
+            storeu.put(match);
+            await waitForTransactionComplete(txu);
+            // トリムはバックグラウンドで行う（await しても良い）
+            trimHistoryLimit(db).catch(()=>{});
+            return match.id;
+          }
+        } catch (e) {
+          // 既存チェック失敗しても保存自体を試みる（ログだけ）
+          console.warn('既存チェックに失敗しました（続行します）', e);
+        }
+
+        // --- 新規追加（readwrite） ---
+        // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
+        const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
+        const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
+
+        const entry = {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified || 0,
+          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
+          createdAt: Date.now(),
+          note: '', // 新規: 補足フィールドを追加（空文字で初期化）
+          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
+          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
+        };
+
+        try {
+          const tx = db.transaction(STORE_NAME, 'readwrite');
+          const store = tx.objectStore(STORE_NAME);
+          const addReq = store.add(entry);
+          const id = await promisifyRequest(addReq);
+          await waitForTransactionComplete(tx);
+          // trim を同期的に実行（非致命的）
+          await trimHistoryLimit(db);
+          return id;
+        } catch (err) {
+          console.warn('最初の追加でエラー', err);
+          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
+          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
+            try {
+              // 古いものをいくつか削除して再挑戦
+              const txr2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = txr2.objectStore(STORE_NAME);
+              const all = await getAllFromStore(store2);
+              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
+              // 古いものを 3 件まで削除
+              const remove = sorted.slice(0, Math.min(3, sorted.length));
+              for (const it of remove) store2.delete(it.id);
+              await waitForTransactionComplete(txr2);
+            } catch (cleanupErr) {
+              console.warn('クリーンアップ中にエラー', cleanupErr);
+            }
+            // blob を null にして保存（容量を節約）
+            try {
+              const tx2 = db.transaction(STORE_NAME, 'readwrite');
+              const store2 = tx2.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq2 = store2.add(entrySmall);
+              const id2 = await promisifyRequest(addReq2);
+              await waitForTransactionComplete(tx2);
+              await trimHistoryLimit(db);
+              return id2;
+            } catch (finalErr) {
+              console.warn('最終的な追加にも失敗しました', finalErr);
+              return null;
+            }
+          } else {
+            // その他のエラー: 可能なら blob を外して保存
+            try {
+              const tx3 = db.transaction(STORE_NAME, 'readwrite');
+              const store3 = tx3.objectStore(STORE_NAME);
+              const entrySmall = Object.assign({}, entry, { blob: null });
+              const addReq3 = store3.add(entrySmall);
+              const id3 = await promisifyRequest(addReq3);
+              await waitForTransactionComplete(tx3);
+              await trimHistoryLimit(db);
+              return id3;
+            } catch (err2) {
+              console.warn('blob を外しても保存失敗', err2);
+              return null;
+            }
+          }
+        }
+      }catch(err){ console.warn('保存に失敗しました', err); return null; }
+    }
+
+    // --- AB loop enforcement: called on timeupdate ---
+    function handleABLoop() {
+      // Conditions: loopEnabled true, abA and abB set, valid numbers, and B > A + small EPS
+      if (!loopEnabled) return;
+      if (abA == null || abB == null) return;
+      if (!isFinite(abA) || !isFinite(abB)) return;
+      const EPS = 0.05;
+      if (!(abB > abA + EPS)) return;
+      // if currentTime >= abB - smallMargin => jump to abA
+      const t = Number(video.currentTime || 0);
+      // handle edge when video.duration is small:
+      if (typeof video.duration === 'number' && isFinite(video.duration)) {
+        // ensure times are within duration bounds
+        if (abA < 0) abA = 0;
+        if (abB > video.duration) abB = video.duration;
+      }
+      // If currentTime is slightly less than abB it's fine; when it crosses abB -> loop
+      if (t >= abB - 0.03) {
+        // set to A and continue playing if it was playing
+        const wasPlaying = !video.paused && !video.ended;
+        try {
+          video.currentTime = Math.max(0, abA);
+        } catch (err) {
+          try { video.currentTime = Math.min(video.duration || abA, abA); } catch(e){}
+        }
+        if (wasPlaying) {
+          // attempt to keep playing
+          video.play().catch(()=>{});
+        }
+      }
+    }
+
     video.addEventListener('timeupdate', () => {
       if (!isSeeking && video.duration && isFinite(video.duration)) {
         const pct = (video.currentTime / video.duration) * 100;
         seekBar.value = pct;
       }
       updateToggleButton();
+
+      // check A/B loop enforcement on every timeupdate (lightweight)
+      try { handleABLoop(); } catch (err) { /* ignore */ }
     });
 
     video.addEventListener('loadedmetadata', () => {
@@ -2618,7 +3108,16 @@
 
     video.addEventListener('play', updateToggleButton);
     video.addEventListener('pause', updateToggleButton);
-    video.addEventListener('ended', updateToggleButton);
+    video.addEventListener('ended', () => {
+      updateToggleButton();
+      // if ended and loop enabled and abA/abB set, restart at A
+      if (loopEnabled && abA != null && abB != null && isFinite(abA) && isFinite(abB) && abB > abA + 0.05) {
+        try {
+          video.currentTime = Math.max(0, abA);
+          video.play().catch(()=>{});
+        } catch (err) {}
+      }
+    });
 
     function tryStartOnTap(e){
       if (!(video.paused || video.ended)) return;
@@ -2982,239 +3481,6 @@
     });
 
     (async ()=>{ try{ await openDB(); populateCategorySelect(); await renderHistory(); }catch(e){ console.warn(e); } })();
-
-    function clearMarkerElements(){
-      while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
-    }
-
-    function renderMarkers(){
-      clearMarkerElements();
-      if (!markers || markers.length === 0) return;
-      const dur = (video && isFinite(video.duration)) ? video.duration : null;
-      if (!dur) return;
-
-      const seekRect = seekBar.getBoundingClientRect();
-      const layerRect = markerLayer.getBoundingClientRect();
-      if (seekRect.width <= 0) return;
-
-      const markerW = 2;
-      const markerH = 12;
-
-      markers.forEach((t, idx) => {
-        const el = document.createElement('div');
-        el.className = 'marker';
-        el.setAttribute('role','presentation');
-        el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
-
-        const frac = Math.max(0, Math.min(1, t / dur));
-        const leftOnSeekPx = frac * seekRect.width;
-        const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
-        const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
-
-        el.style.left = `${Math.round(leftPx)}px`;
-        el.style.top = `${Math.round(topPx)}px`;
-        markerLayer.appendChild(el);
-      });
-    }
-
-    markerAddBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!video || !isFinite(video.duration)) { return; }
-      const t = Number(video.currentTime || 0);
-      const EPS = 0.1;
-      const exist = markers.some(m => Math.abs(m - t) < EPS);
-      if (exist) {
-        return;
-      }
-      markers.push(t);
-      markers.sort((a,b)=>a-b);
-      renderMarkers();
-
-      // 自動保存: 現在開いている履歴があれば即時保存
-      try {
-        if (currentHistoryId != null) {
-          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
-          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
-        }
-      } catch (err) { console.warn('marker add save err', err); }
-    });
-
-    function findPreviousMarkerIndex(referenceTime) {
-      if (!markers || markers.length === 0) return -1;
-      const EPS = 1e-6;
-      let idx = -1;
-      for (let i = 0; i < markers.length; i++){
-        if (markers[i] <= referenceTime - EPS) idx = i;
-        else break;
-      }
-      return idx;
-    }
-
-    markerJumpBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!markers || markers.length === 0) return;
-      if (!video || !isFinite(video.duration)) return;
-      const ref = Number(video.currentTime || 0);
-      const idx = findPreviousMarkerIndex(ref);
-      if (idx === -1) return;
-      video.currentTime = markers[idx];
-      const pct = (video.currentTime / video.duration) * 100;
-      seekBar.value = pct;
-    });
-
-    markerRemoveBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!markers || markers.length === 0) return;
-      if (!video || !isFinite(video.duration)) return;
-      const ref = Number(video.currentTime || 0);
-      const idx = findPreviousMarkerIndex(ref);
-      if (idx === -1) {
-        return;
-      }
-      markers.splice(idx, 1);
-      renderMarkers();
-
-      // 自動保存: 削除後すぐに保存
-      try {
-        if (currentHistoryId != null) {
-          const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
-          updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
-        }
-      } catch (err) { console.warn('marker remove save err', err); }
-    });
-
-    function repositionMarkerLayer(){
-      renderMarkers();
-    }
-
-    function formatTimeForLabel(sec){
-      if (!isFinite(sec)) return '0:00';
-      return (function(realSec){
-        if (!isFinite(realSec)) return '0:00';
-        const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
-        const mm = Math.floor(realSec / 60).toString();
-        return `${mm}:${ss}`;
-      })(sec);
-    }
-
-    video.addEventListener('loadeddata', () => { renderMarkers(); });
-    video.addEventListener('seeked', () => { renderMarkers(); });
-    window.addEventListener('resize', () => { renderMarkers(); });
-
-    /**
-    * 以下は履歴保存処理（saveFileToHistory）です。
-    * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
-    * （サムネイル生成のみ削除済み）
-    */
-    async function saveFileToHistory(file){
-      try{
-        const db = await openDB();
-
-        // --- 既存チェック（readonly） ---
-        try {
-          const txr = db.transaction(STORE_NAME, 'readonly');
-          const storer = txr.objectStore(STORE_NAME);
-          const all = await getAllFromStore(storer);
-          try { await waitForTransactionComplete(txr); } catch(e){}
-          const match = all.find(item => item.name === file.name && item.size === file.size && item.lastModified === file.lastModified);
-          if (match) {
-            // 更新 (createdAt) は readwrite で行う
-            const txu = db.transaction(STORE_NAME, 'readwrite');
-            const storeu = txu.objectStore(STORE_NAME);
-            match.createdAt = Date.now();
-            // migrate legacy categoryId -> categoryIds
-            if (match.hasOwnProperty('categoryId') && !match.hasOwnProperty('categoryIds')) {
-              match.categoryIds = match.categoryId ? [match.categoryId] : [];
-              delete match.categoryId;
-            }
-            storeu.put(match);
-            await waitForTransactionComplete(txu);
-            // トリムはバックグラウンドで行う（await しても良い）
-            trimHistoryLimit(db).catch(()=>{});
-            return match.id;
-          }
-        } catch (e) {
-          // 既存チェック失敗しても保存自体を試みる（ログだけ）
-          console.warn('既存チェックに失敗しました（続行します）', e);
-        }
-
-        // --- 新規追加（readwrite） ---
-        // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
-        const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
-        const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
-
-        const entry = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified || 0,
-          blob: file, // ファイルオブジェクトをそのまま保存（より互換性あり）
-          createdAt: Date.now(),
-          note: '', // 新規: 補足フィールドを追加（空文字で初期化）
-          categoryIds: assignCatArr, // 複数対応: 空配列=未分類
-          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
-        };
-
-        try {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          const store = tx.objectStore(STORE_NAME);
-          const addReq = store.add(entry);
-          const id = await promisifyRequest(addReq);
-          await waitForTransactionComplete(tx);
-          // trim を同期的に実行（非致命的）
-          await trimHistoryLimit(db);
-          return id;
-        } catch (err) {
-          console.warn('最初の追加でエラー', err);
-          // QuotaExceededError 等で失敗した場合は古いアイテムを削除して再試行
-          if (err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22)) {
-            try {
-              // 古いものをいくつか削除して再挑戦
-              const txr2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = txr2.objectStore(STORE_NAME);
-              const all = await getAllFromStore(store2);
-              const sorted = all.sort((a,b)=>a.createdAt - b.createdAt);
-              // 古いものを 3 件まで削除
-              const remove = sorted.slice(0, Math.min(3, sorted.length));
-              for (const it of remove) store2.delete(it.id);
-              await waitForTransactionComplete(txr2);
-            } catch (cleanupErr) {
-              console.warn('クリーンアップ中にエラー', cleanupErr);
-            }
-            // blob を null にして保存（容量を節約）
-            try {
-              const tx2 = db.transaction(STORE_NAME, 'readwrite');
-              const store2 = tx2.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq2 = store2.add(entrySmall);
-              const id2 = await promisifyRequest(addReq2);
-              await waitForTransactionComplete(tx2);
-              await trimHistoryLimit(db);
-              return id2;
-            } catch (finalErr) {
-              console.warn('最終的な追加にも失敗しました', finalErr);
-              return null;
-            }
-          } else {
-            // その他のエラー: 可能なら blob を外して保存
-            try {
-              const tx3 = db.transaction(STORE_NAME, 'readwrite');
-              const store3 = tx3.objectStore(STORE_NAME);
-              const entrySmall = Object.assign({}, entry, { blob: null });
-              const addReq3 = store3.add(entrySmall);
-              const id3 = await promisifyRequest(addReq3);
-              await waitForTransactionComplete(tx3);
-              await trimHistoryLimit(db);
-              return id3;
-            } catch (err2) {
-              console.warn('blob を外しても保存失敗', err2);
-              return null;
-            }
-          }
-        }
-      }catch(err){ console.warn('保存に失敗しました', err); return null; }
-    }
-
   </script>
 </body>
 </html>
