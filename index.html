@@ -840,22 +840,23 @@
 
     const DB_NAME = 'videoHistory';
     const STORE_NAME = 'videos';
+    const META_STORE = 'entryMeta';
     let dbPromise = null;
 
     function openDB(){
       if (dbPromise) return dbPromise;
       dbPromise = new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, 1);
+        // bump version to 2 to add metadata store without altering videos store
+        const req = indexedDB.open(DB_NAME, 2);
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains(STORE_NAME)){
             const store = db.createObjectStore(STORE_NAME, {keyPath:'id', autoIncrement:true});
-            // keep simple indexes to avoid edge issues
-            try {
-              store.createIndex('byCreated', 'createdAt');
-            } catch (e) {
-              // ignore if index creation fails on older browsers
-            }
+            try { store.createIndex('byCreated', 'createdAt'); } catch(e){}
+          }
+          // create a lightweight metadata store used to keep markers/notes/etc
+          if (!db.objectStoreNames.contains(META_STORE)) {
+            db.createObjectStore(META_STORE, { keyPath: 'id' });
           }
         };
         req.onsuccess = () => resolve(req.result);
@@ -951,7 +952,13 @@
             } finally {
               const delReq = store.delete(Number(id));
               delReq.onsuccess = ()=> {
-                waitForTransactionComplete(tx).then(resolve).catch(reject);
+                waitForTransactionComplete(tx).then(async ()=>{
+                  // delete associated meta if exists
+                  try {
+                    await deleteEntryMeta(id);
+                  } catch(e){}
+                  resolve();
+                }).catch(reject);
               };
               delReq.onerror = ()=> reject(delReq.error);
             }
@@ -960,7 +967,10 @@
             // fallback: just delete
             const delReq2 = store.delete(Number(id));
             delReq2.onsuccess = ()=> {
-              waitForTransactionComplete(tx).then(resolve).catch(reject);
+              waitForTransactionComplete(tx).then(async ()=>{
+                try { await deleteEntryMeta(id); } catch(e){}
+                resolve();
+              }).catch(reject);
             };
             delReq2.onerror = ()=> reject(delReq2.error);
           };
@@ -1091,7 +1101,7 @@
       });
     }
 
-    // --- 新規: マーカー保存関連 ---
+    // --- 新規: マーカー保存関連 (改良版: メタデータストアを使って blob 書き換えを避ける) ---
     function markersEqual(a,b){
       if (!Array.isArray(a)) a = [];
       if (!Array.isArray(b)) b = [];
@@ -1103,37 +1113,71 @@
       return true;
     }
 
-    async function updateEntryMarkers(id, newMarkers){
+    // set markers into metadata store (lightweight)
+    async function setEntryMarkersMeta(id, newMarkers){
       const db = await openDB();
-      return new Promise((resolve,reject)=>{
-        const tx = db.transaction(STORE_NAME,'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(Number(id));
-        req.onsuccess = async ()=>{
-          const val = req.result;
-          if (!val) {
-            try { await waitForTransactionComplete(tx); } catch(e){}
-            resolve(false);
-            return;
-          }
-          const current = Array.isArray(val.markers) ? val.markers : (Array.isArray(val.markerTimes) ? val.markerTimes : []);
-          if (markersEqual(current, newMarkers)) {
-            // 変更なし -> no-op
-            try { await waitForTransactionComplete(tx); } catch(e){}
-            resolve(true);
-            return;
-          }
-          val.markers = Array.isArray(newMarkers) ? newMarkers.slice() : [];
-          // cleanup legacy keys optionally
-          if (val.hasOwnProperty('markerTimes')) delete val.markerTimes;
-          const putReq = store.put(val);
-          putReq.onsuccess = ()=> {
+      return new Promise(async (resolve, reject) => {
+        try {
+          const tx = db.transaction(META_STORE, 'readwrite');
+          const store = tx.objectStore(META_STORE);
+          const payload = { id: Number(id), markers: Array.isArray(newMarkers) ? newMarkers.slice() : [] };
+          const putReq = store.put(payload);
+          putReq.onsuccess = () => {
             waitForTransactionComplete(tx).then(()=>resolve(true)).catch(reject);
           };
-          putReq.onerror = ()=>reject(putReq.error);
-        };
-        req.onerror = ()=>reject(req.error);
+          putReq.onerror = () => reject(putReq.error);
+        } catch (err) {
+          reject(err);
+        }
       });
+    }
+
+    // get markers from metadata store (returns array or null)
+    async function getEntryMarkersMeta(id){
+      const db = await openDB();
+      return new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction(META_STORE, 'readonly');
+          const store = tx.objectStore(META_STORE);
+          const req = store.get(Number(id));
+          req.onsuccess = () => {
+            const res = req.result;
+            if (res && Array.isArray(res.markers)) resolve(res.markers.slice());
+            else resolve(null);
+          };
+          req.onerror = () => resolve(null);
+        } catch (err) {
+          resolve(null);
+        }
+      });
+    }
+
+    async function deleteEntryMeta(id){
+      try {
+        const db = await openDB();
+        const tx = db.transaction(META_STORE, 'readwrite');
+        const store = tx.objectStore(META_STORE);
+        const del = store.delete(Number(id));
+        await promisifyRequest(del);
+        await waitForTransactionComplete(tx);
+      } catch (e) {
+        // non-fatal
+      }
+    }
+
+    // public: updateEntryMarkers will now write to META_STORE and avoid touching blob
+    async function updateEntryMarkers(id, newMarkers){
+      // normalize marker array
+      const normalized = Array.isArray(newMarkers) ? newMarkers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+      // Read current meta; if identical, no-op
+      try {
+        const cur = await getEntryMarkersMeta(id);
+        if (markersEqual(cur, normalized)) return true;
+      } catch (e) {
+        // ignore and proceed to write
+      }
+      // write to meta store
+      return setEntryMarkersMeta(id, normalized);
     }
 
     // --- end マーカー保存関連 ---
@@ -1979,7 +2023,6 @@
               const tmp = modalUsers[idx+1];
               modalUsers[idx+1] = modalUsers[idx];
               modalUsers[idx] = tmp;
-              modalUsers[idx] = tmp;
               renderModalRows();
               saveModalUsersAndRefresh();
             }
@@ -2549,9 +2592,19 @@
       currentHistoryId = entry.id;
       fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
 
-      // --- 変更: DB に保存してあるマーカーを読み込んで反映 ---
-      markers = Array.isArray(entry.markers) ? entry.markers.slice() :
-            (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+      // --- 変更: DB に保存してあるマーカーを metadata store から読み込んで反映 ---
+      try {
+        const metaMarkers = await getEntryMarkersMeta(entry.id);
+        if (Array.isArray(metaMarkers)) {
+          markers = metaMarkers.slice();
+        } else {
+          markers = Array.isArray(entry.markers) ? entry.markers.slice() :
+                (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+        }
+      } catch (e) {
+        markers = Array.isArray(entry.markers) ? entry.markers.slice() :
+              (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
+      }
       // --- end change ---
 
       clearMarkerElements();
@@ -2633,7 +2686,7 @@
     backBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
 
-      // --- 追加: 現在のマーカーを DB に保存（ファイル単位） ---
+      // --- 追加: 現在のマーカーを DB の meta store に保存（ファイル単位） ---
       try {
         if (currentHistoryId != null) {
           // ensure markers array is normalized numbers
@@ -2861,10 +2914,11 @@
       markers.sort((a,b)=>a-b);
       renderMarkers();
 
-      // 自動保存: 現在開いている履歴があれば即時保存
+      // 自動保存: 現在開いている履歴があれば非ブロッキングにメタストアへ即時保存（軽量）
       try {
         if (currentHistoryId != null) {
           const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
+          // write to meta store; this is lightweight and won't cause blob re-write
           updateEntryMarkers(currentHistoryId, normalized).catch(err => console.warn('マーカー自動保存失敗', err));
         }
       } catch (err) { console.warn('marker add save err', err); }
@@ -2905,7 +2959,7 @@
       markers.splice(idx, 1);
       renderMarkers();
 
-      // 自動保存: 削除後すぐに保存
+      // 自動保存: 削除後すぐにメタストアへ保存（軽量）
       try {
         if (currentHistoryId != null) {
           const normalized = Array.isArray(markers) ? markers.map(x=>Number(x)).filter(x=>isFinite(x)) : [];
@@ -2918,15 +2972,7 @@
       renderMarkers();
     }
 
-    function formatTimeForLabel(sec){
-      if (!isFinite(sec)) return '0:00';
-      return (function(realSec){
-        if (!isFinite(realSec)) return '0:00';
-        const ss = Math.floor(realSec % 60).toString().padStart(2,'0');
-        const mm = Math.floor(realSec / 60).toString();
-        return `${mm}:${ss}`;
-      })(sec);
-    }
+    // formatTimeForLabel already defined above
 
     video.addEventListener('loadeddata', () => { renderMarkers(); });
     video.addEventListener('seeked', () => { renderMarkers(); });
@@ -2983,7 +3029,7 @@
           createdAt: Date.now(),
           note: '', // 新規: 補足フィールドを追加（空文字で初期化）
           categoryIds: assignCatArr, // 複数対応: 空配列=未分類
-          markers: [] // 新規: マーカー情報をここで保持（ファイルごと）
+          markers: [] // 新規: マーカー情報をここで保持（ファイルごと） — ただし今後は meta store を優先
         };
 
         try {
@@ -3214,45 +3260,55 @@
           return;
         }
 
-        // if we have a db, try to enumerate items in the specified store
+        // if we have a db, try to enumerate items in the specified store(s)
         let total = 0;
         let deleted = 0;
 
         try {
           updateProgress(46, 'IndexedDB のエントリを列挙しています…');
-          if (!db.objectStoreNames.contains(STORE_NAME)) {
-            updateProgress(56, 'ストアが見つかりません — DB を削除します…');
-          } else {
-            // get all keys (IDs) to plan deletion
-            const tx = db.transaction(STORE_NAME, 'readonly');
-            const store = tx.objectStore(STORE_NAME);
+          const storesToCheck = [];
+          if (db.objectStoreNames.contains(STORE_NAME)) storesToCheck.push(STORE_NAME);
+          if (db.objectStoreNames.contains(META_STORE)) storesToCheck.push(META_STORE);
+
+          let allEntries = [];
+          for (const sname of storesToCheck) {
+            const tx = db.transaction(sname, 'readonly');
+            const store = tx.objectStore(sname);
             const all = await getAllFromStore(store).catch(e => { console.warn('getAllFromStore fail', e); return []; });
             try { await waitForTransactionComplete(tx); } catch(e){/* ignore */ }
-            total = Array.isArray(all) ? all.length : 0;
+            // annotate with store name for deletion
+            if (Array.isArray(all) && all.length > 0) {
+              const annotated = all.map(it => ({ store: sname, item: it }));
+              allEntries = allEntries.concat(annotated);
+            }
+          }
 
-            if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
+          total = allEntries.length;
 
-            if (total === 0) {
-              updateProgress(64, '削除するエントリはありません。DB を削除します…');
-            } else {
-              updateProgress(56, `エントリを削除中… (0 / ${total})`);
-              // Delete entries one-by-one (or in small batches) to show progress
-              const batchSize = 10;
-              // perform delete in readwrite transactions, small batches to keep UI responsive
-              for (let i = 0; i < total; i += batchSize) {
-                if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-                const slice = all.slice(i, i + batchSize);
-                const tx2 = db.transaction(STORE_NAME, 'readwrite');
-                const store2 = tx2.objectStore(STORE_NAME);
-                for (const item of slice) {
+          if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
+
+          if (total === 0) {
+            updateProgress(64, '削除するエントリはありません。DB を削除します…');
+          } else {
+            updateProgress(56, `エントリを削除中… (0 / ${total})`);
+            // Delete entries one-by-one (or in small batches) to show progress
+            const batchSize = 10;
+            for (let i = 0; i < allEntries.length; i += batchSize) {
+              if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
+              const slice = allEntries.slice(i, i + batchSize);
+              // group by store to perform each tx per store
+              const groups = {};
+              slice.forEach(x => { groups[x.store] = groups[x.store] || []; groups[x.store].push(x.item); });
+              for (const sname of Object.keys(groups)) {
+                const tx2 = db.transaction(sname, 'readwrite');
+                const store2 = tx2.objectStore(sname);
+                for (const itemObj of groups[sname]) {
                   try {
-                    // if item has id, delete by id, else attempt to delete by key (if returned)
-                    const id = (item && item.id != null) ? item.id : (item && item.key != null ? item.key : null);
+                    const id = (itemObj && itemObj.id != null) ? itemObj.id : (itemObj && itemObj.key != null ? itemObj.key : null);
                     if (id != null) {
                       try { store2.delete(Number(id)); } catch(e){ try { store2.delete(id); } catch(e){} }
                     } else {
-                      // fallback: try to find by name / size (not ideal)
-                      // skip in this case
+                      // fallback skip
                     }
                   } catch (e) {
                     console.warn('entry delete attempt failed', e);
@@ -3263,18 +3319,18 @@
                 } catch (e) {
                   console.warn('batch delete tx error', e);
                 }
-                deleted = Math.min(total, i + batchSize);
-                // map deletion progress to a range (56..80)
-                const base = 56;
-                const span = 24;
-                const pct = base + Math.round((deleted / Math.max(1, total)) * span);
-                updateProgress(pct, `エントリを削除中… (${deleted} / ${total})`);
-                // small visual pause
-                await new Promise(r=>setTimeout(r, 60));
-              } // end for batches
-              // final small pause
-              await new Promise(r=>setTimeout(r, 80));
-            }
+              }
+              deleted = Math.min(total, i + batchSize);
+              // map deletion progress to a range (56..80)
+              const base = 56;
+              const span = 24;
+              const pct = base + Math.round((deleted / Math.max(1, total)) * span);
+              updateProgress(pct, `エントリを削除中… (${deleted} / ${total})`);
+              // small visual pause
+              await new Promise(r=>setTimeout(r, 60));
+            } // end for batches
+            // final small pause
+            await new Promise(r=>setTimeout(r, 80));
           }
         } catch (err) {
           console.warn('IndexedDB entry deletion failed', err);
