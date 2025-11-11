@@ -1,10 +1,8 @@
-<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>動画再生支援ツール</title>
-
   <!-- ====== Favicon / Icons (クロスプラットフォーム対応) ====== -->
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
@@ -26,7 +24,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="theme-color" content="#0b74ff" />
   <!-- ============================================================ -->
-
   <style>
     /* ---------------------------
        レスポンシブ制御（対象ボタン群のみ）
@@ -39,25 +36,21 @@
       --ctrl-padding-y: calc(var(--ctrl-size) * 0.16);
       --ctrl-font: calc(var(--ctrl-size) * 0.28);
       --ctrl-radius: calc(var(--ctrl-size) * 0.18);
-
       /* 履歴内の小さめボタンはコントロールサイズを少し縮小して使う */
       --hist-scale: 0.78;
       --hist-size: calc(var(--ctrl-size) * var(--hist-scale));
       --hist-padding-x: calc(var(--hist-size) * 0.18);
       --hist-font: calc(var(--hist-size) * 0.28);
       --hist-radius: calc(var(--hist-size) * 0.16);
-
       /* タグチップのサイズ（履歴と連動） */
       --tag-font: calc(var(--hist-font) * 0.9);
       --tag-padding-y: 4px;
       --tag-padding-x: 8px;
       --tag-radius: 8px;
-
       /* 変更: コンパクト化倍率を少し強めに（指定ボタン群用） */
       --ctrl-compact-scale: 0.72; /* ここを小さめにして指定ボタンを「もう少し小さく」 */
     }
-
-    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;overflow:hidden;background:#111}
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Noto Sans JP',Helvetica,Arial;Overflow:hidden;background:#111}
     /* NOTE: pick ボタン を段落の下に置くため padding-top を通常に戻す */
     .center{
       min-height:100vh;
@@ -72,14 +65,12 @@
     .btn{appearance:none;border:0;padding:10px 12px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;background:#fff}
     .primary{background:#0b74ff;color:white}
     .muted{background:#f0f0f0;color:#111}
-
     /* 再読み込みボタンはページ内の右上に配置（ビューの外ではなくページの中に） */
     #reloadBtn {
       position: absolute;
       top: 12px;
       right: 12px;
       z-index: 1200;
-
       /* もう少し小さめに調整（既存のコントロールサイズより少し小さく表示） */
       height: calc(var(--ctrl-size) * 0.60);
       min-width: calc(var(--ctrl-size) * 0.60);
@@ -91,7 +82,6 @@
       justify-content:center;
       box-sizing:border-box;
     }
-
     /* 変更: キャッシュクリアボタンを左端に配置 */
     #clearCacheBtn {
       position: absolute;
@@ -108,7 +98,6 @@
       justify-content:center;
       box-sizing:border-box;
     }
-
     /* キャッシュ削除時に表示するオーバーレイ（進捗） */
     .cache-overlay {
       position: fixed;
@@ -130,7 +119,6 @@
       border: 1px solid #e6f0ff;
     }
     .cache-overlay[aria-hidden="false"] { display:flex; }
-
     .cache-overlay .status {
       flex: 1;
       display:flex;
@@ -139,7 +127,6 @@
     }
     .cache-overlay .status .title { font-weight:700; font-size:14px; color:#08345f; }
     .cache-overlay .status .msg { font-size:13px; color:#425565; }
-
     .cache-overlay .progress-bg {
       width: 100%;
       height: 10px;
@@ -157,18 +144,15 @@
     }
     .cache-overlay .actions { display:flex; gap:8px; align-items:center; }
     .cache-overlay .actions .btn { height:34px; padding:6px 10px; min-width:80px; }
-
     /* ファイル選択画面：背景を白に、文字色を濃く（必要最小限の変更） */
     #pickerScreen{background:#fff;color:#111; position: relative;}
     #pickerScreen h1,#pickerScreen p{color:inherit}
     #pickerScreen .file-info{color:#444}
-
     /* ドラッグオーバー時の視覚的フィードバック（最小限） */
     #pickerScreen.dragover{
       outline: 3px dashed rgba(11,116,255,0.65);
       box-shadow: 0 6px 24px rgba(11,116,255,0.06);
     }
-
     /* 履歴リスト（最小限のスタイル） */
     .history-wrap{width:100%;max-width:880px;margin-top:0;/* fixed 化により余白不要 */margin-bottom:8px}
     .history-head{
@@ -203,7 +187,6 @@
       cursor: pointer;
     }
     .tag-chip.uncat{ background:#9aa0a6; color:#fff; }
-
     /* 履歴内アクションをグリッドにして2列表示（開く/削除 の1行目、名前編集/補足編集 の2行目） */
     .history-actions{
       display:grid;
@@ -239,10 +222,8 @@
     /* select にもレスポンシブサイズを適用 */
     select.sort-select{padding:0 calc(var(--hist-padding-x));border-radius:var(--hist-radius);border:1px solid #ddd;background:#fff;font-size:var(--hist-font);height:var(--hist-size);box-sizing:border-box}
     select.category-select{padding:0 calc(var(--hist-padding-x));border-radius:var(--hist-radius);border:1px solid #ddd;background:#fff;font-size:var(--hist-font);height:var(--hist-size);box-sizing:border-box}
-
     /* カテゴリ周りの小さな調整（追加） */
     .category-controls { display:flex; align-items:center; gap:8px; }
-
     /* カテゴリ編集モーダル */
     .modal-backdrop{position:fixed;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,0.4);display:none;align-items:center;justify-content:center;z-index:9999}
     .modal{background:#fff;border-radius:12px;padding:16px;max-width:720px;width:94%;max-height:80vh;overflow:auto;box-sizing:border-box}
@@ -252,13 +233,11 @@
     .cat-row input[type="color"]{width:44px;height:34px;border:1px solid #ddd;border-radius:6px;padding:2px;background:#fff}
     .modal .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
     .reorder-btn{padding:6px 8px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer}
-
     /* ビューア全体 */
     .viewer{display:none;height:100vh;width:100vw}
     .video-wrap{height:100vh;width:100vw;display:flex;align-items:center;justify-content:center;background:#000;position:relative;touch-action:none}
     video{max-width:100%;max-height:100vh;width:auto;height:auto;object-fit:contain;outline:none;touch-action:none;transition:transform .12s ease;}
     video.mirrored{transform:scaleX(-1);}
-
     /* 上部レイアウト：左（戻る+スキップ）、中央（シークバー）、右（再生トグル＋速度） */
     .top-control {
       position:absolute;
@@ -273,13 +252,11 @@
       backdrop-filter:blur(6px);
       box-sizing:border-box;
     }
-
     /* 左：戻る（固定左端） */
     #topBack {
       left:12px;
       top:8px;
     }
-
     /* まとめたスキップ群（戻るの直下に配置される、左寄せ） */
     .skip-group{
       position:absolute;
@@ -306,7 +283,6 @@
       white-space:nowrap;
       color:#111; /* 明示しておく（他ボタンと統一） */
     }
-
     /* 中央：シークバー（幅は JS で調整） */
     #topSeek {
       position:absolute;
@@ -321,7 +297,6 @@
       background:rgba(0,0,0,0.06);
       border-radius:10px;
     }
-
     /* シークバー入力自体 */
     .seek {
       -webkit-appearance: none;
@@ -347,7 +322,6 @@
     .seek::-moz-range-track{height:4px;border-radius:4px;background:rgba(255,255,255,0.14);}
     .seek::-moz-range-progress{background:rgba(11,116,255,0.9);height:4px;border-radius:4px;}
     .seek::-moz-range-thumb{width:10px;height:10px;border-radius:50%;background:#fff;border:0;box-shadow:0 1px 2px rgba(0,0,0,0.4);}
-
     /* マーカー表示レイヤー（シークバー上に重ねる） */
     .marker-layer {
       position:absolute;
@@ -368,23 +342,19 @@
       transform: none;
     }
     .marker[aria-label]{cursor:default}
-
     /* 右：再生トグル（固定右端） */
     #topToggle { right:12px; top:8px; position:absolute; z-index:13; }
-
     .top-btn{
       padding:6px 10px;border-radius:8px;font-size:13px;background:rgba(255,255,255,0.95);
       box-shadow:0 1px 3px rgba(0,0,0,0.18);cursor:pointer;
       color:#111; /* 他ボタンと合わせる */
     }
     .top-btn[disabled]{opacity:0.5;cursor:default}
-
     /* ここを変更：停止（aria-pressed=true）の見た目を他のボタンと同じにする */
     #playToggleBtn[aria-pressed="true"]{
       background: rgba(255,255,255,0.95);
       color: #111;
     }
-
     /* 速度操作は再生の下に表示（右端寄せ） */
     .overlay-right{
       position:absolute;
@@ -403,18 +373,14 @@
     }
     .overlay-right .btn{padding:8px 10px;border-radius:8px;font-size:14px}
     .speed-display{min-width:64px;text-align:center;color:#fff;font-weight:600}
-
     /* 右端揃えにしたので内部グループのレイアウトを右寄せにする */
     .overlay-right > div { display:flex; gap:8px; align-items:center; justify-content:flex-end; }
-
     /* マーカー操作ボタン（追加） */
     .marker-controls{display:flex;gap:6px;align-items:center}
     .marker-controls .marker-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer}
-
     /* A/B ループ用ボタン（マーカー設置ボタン類の下に配置） */
     .ab-controls{display:flex;gap:6px;align-items:center;margin-top:6px}
     .ab-controls .ab-btn{padding:6px 10px;border-radius:8px;font-size:14px;background:rgba(255,255,255,0.95);cursor:pointer;min-width:44px}
-
     /* A/B のシーク上マーカー表示 */
     .ab-marker-a, .ab-marker-b {
       position:absolute;
@@ -427,7 +393,6 @@
     }
     .ab-marker-a{ background: #22c55e; } /* A: 緑 */
     .ab-marker-b{ background: #ef4444; } /* B: 赤 */
-
     /* ======================================================
        ここから：ボタン群のサイズだけをレスポンシブに変更
        — レイアウト（配置）は変えない（position等はそのまま）
@@ -446,13 +411,10 @@
       justify-content:center;
       box-sizing:border-box;
     }
-
     .top-btn { padding-top: calc(var(--ctrl-padding-y)); padding-bottom: calc(var(--ctrl-padding_y)); }
     .skip-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
     .marker-btn { padding-top: calc(var(--ctrl-padding-y) * 0.9); padding-bottom: calc(var(--ctrl-padding_y) * 0.9); }
-
     /* --- ここから今回の追加: 指定したボタン群を少し小さくする（上書き） --- */
-
     /* 影響対象:
        - .skip-btn（3s/5s戻す/進む／mirror は同クラス）
        - ミラーは #mirrorBtn（.skip-btn と同じなので含まれる）
@@ -476,25 +438,21 @@
       justify-content:center;
       box-sizing:border-box;
     }
-
     /* marker-controls 内の .marker-btn がより具体的に定義されているので重要度を上げる */
     .marker-controls .marker-btn {
       padding: 0 calc(var(--ctrl-padding-x) * 0.6);
     }
-
     /* ab-controls 内の .ab-btn も少し余白を調整 */
     .ab-controls .ab-btn {
       padding: 0 calc(var(--ctrl-padding-x) * 0.65);
     }
     /* --- ここまで今回の追加 --- */
-
     /* 検索バー用（history search） */
     .history-search{display:flex;gap:8px;align-items:center;margin:8px 0 8px}
     .history-search input[type="search"]{
       flex:1;padding:8px;border-radius:8px;border:1px solid #ddd;font-size:14px;background:#fff;
     }
     .history-search .clear-btn{padding:8px 10px;border-radius:8px;border:1px solid #ddd;background:#fff;cursor:pointer}
-
     @media (max-width:480px){
       .overlay-right{ top: calc(8px + var(--ctrl-size) + 6px); }
       .seek::-webkit-slider-thumb{width:14px;height:14px;margin-top:-5px}
@@ -502,7 +460,6 @@
       #topSeek{left:12px; right:12px}
       .history-controls{gap:6px}
     }
-
     /* =======================
        アップロード進捗 UI 用の最小スタイル
        ======================= */
@@ -545,7 +502,6 @@
     .progress-item.done .index-badge{background:rgba(34,197,94,0.10);color:#22c55e}
     .progress-item.error{background:#fff6f6}
     .progress-item.error .index-badge{background:rgba(220,38,38,0.08);color:#dc2626}
-
     /* 進捗項目用キャンセルボタンの調整 */
     .progress-cancel-btn{
       margin-left:8px;
@@ -555,19 +511,16 @@
       padding:6px 8px;
       font-size:13px;
     }
-
     .progress-item.cancelled{opacity:0.6}
   </style>
 </head>
 <body>
-
   <!-- ファイル取得画面 -->
   <main id="pickerScreen" class="center" aria-live="polite">
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
     <!-- 追加: キャッシュ削除ボタン（左端に移動済み） -->
     <button id="clearCacheBtn" class="btn muted" type="button" title="アプリ内キャッシュを削除します" aria-label="アプリ内キャッシュを削除">キャッシュ削除</button>
-
     <!-- キャッシュ削除時の進捗オーバーレイ -->
     <div id="cacheOverlay" class="cache-overlay" aria-hidden="true">
       <div class="status">
@@ -582,11 +535,9 @@
         <button id="cacheCloseBtn" class="btn muted" type="button" style="display:none">閉じる</button>
       </div>
     </div>
-
     <div style="text-align:center;width:100%;max-width:880px">
       <h1 style="margin:0 0 8px">動画ファイルを選択</h1>
       <p style="margin:0 0 16px;color:#bbb">「ファイルを取得」を押して端末から動画を選んでください</p>
-
       <!-- 要望に合わせてボタンを段落の直下に配置 -->
       <div style="margin-top:8px">
         <button id="pickBtn" class="btn primary" type="button" aria-label="ファイルを取得">ファイルを取得</button>
@@ -594,14 +545,11 @@
         <input id="fileInput" type="file" accept="video/*" multiple style="display:none" />
       </div>
     </div>
-
     <div class="file-info" id="fileName" style="color:#444">まだファイルが選択されていません</div>
-
     <!-- 追加: アップロード進捗表示領域 -->
     <div id="uploadProgress" class="upload-progress-container" style="display:none" aria-live="polite">
       <div id="uploadProgressList" class="upload-progress-list" role="list"></div>
     </div>
-
     <div class="history-wrap" id="historyWrap">
       <div class="history-head">
         <!-- 左側: コントロール群を順序どおりに配置 -->
@@ -612,45 +560,37 @@
               <option value="created">追加順</option>
               <option value="name">名前順</option>
             </select>
-
             <!-- 降順/昇順（sortOrder） -->
             <select id="sortOrder" class="sort-select" aria-label="昇順降順">
               <option value="desc">降順</option>
               <option value="asc">昇順</option>
             </select>
-
             <!-- 全て（categorySelect） -->
             <select id="categorySelect" class="category-select" aria-label="表示する項目">
               <!-- option は JS で埋める -->
             </select>
-
             <!-- 項目編集（モーダルを開く） -->
             <button id="editCategoryBtn" class="small-btn" title="項目の名前・色を編集">項目編集</button>
-
             <!--
               ※ ユーザー要望：モーダル内で追加/削除を行うため、
                  外側の「新規項目」「項目削除」ボタンは削除しました。
             -->
           </div>
         </div>
-
         <!-- 右側: 履歴件数表示 + 履歴を消去 -->
         <div style="display:flex;align-items:center;gap:8px">
           <div id="historyCount" aria-live="polite" style="color:#666">0 / 0 件表示</div>
           <button id="clearHistoryBtn" class="small-btn">履歴を消去</button>
         </div>
       </div>
-
       <!-- 検索バー：名前順、昇順、全て、項目編集などの行の下に配置 -->
       <div class="history-search" aria-label="履歴検索">
         <input id="historySearch" type="search" placeholder="履歴を検索" aria-label="履歴のタイトルを検索" />
         <button id="clearSearchBtn" class="clear-btn" title="検索をクリア">クリア</button>
       </div>
-
       <div class="history-list" id="historyList" aria-live="polite"></div>
     </div>
   </main>
-
   <!-- カテゴリ編集モーダル -->
   <div id="modalBackdrop" class="modal-backdrop" aria-hidden="true">
     <div class="modal" role="dialog" aria-modal="true" aria-label="項目編集">
@@ -665,17 +605,14 @@
       </div>
     </div>
   </div>
-
   <!-- ビューア画面 -->
   <section id="viewer" class="viewer" aria-hidden="true">
     <div class="video-wrap" id="videoWrap">
       <video id="video" playsinline webkit-playsinline preload="metadata" tabindex="-1" controlslist="nodownload"></video>
-
       <!-- 左上：戻るボタン -->
       <div id="topBack" class="top-control" role="group" aria-label="戻るボタン">
         <button id="backBtn" class="top-btn" aria-label="最初の画面に戻る">戻る</button>
       </div>
-
       <!-- 左上：まとめたスキップ群（戻るの下、常に左寄せ） -->
       <div id="skipGroup" class="skip-group" aria-hidden="false">
         <!-- 3秒グループ: 「3秒戻る 3秒進む」 -->
@@ -688,24 +625,20 @@
           <button id="back5Btn" class="skip-btn" aria-label="5秒戻る">« 5s</button>
           <button id="fwd5Btn" class="skip-btn" aria-label="5秒進む">5s »</button>
         </div>
-
         <!-- ミラー -->
         <div class="skip-row" aria-label="ミラー操作">
           <button id="mirrorBtn" class="skip-btn" aria-pressed="false" aria-label="左右反転（ミラー）">ミラー</button>
         </div>
       </div>
-
       <!-- 中央：シークバー（位置は JS で中央寄せになるよう調整） -->
       <div id="topSeek" class="top-control" role="group" aria-label="再生バー">
         <input id="seekBar" class="seek" type="range" min="0" max="100" step="0.1" value="0" aria-label="再生位置" />
         <div id="markerLayer" class="marker-layer" aria-hidden="true"></div>
       </div>
-
       <!-- 右上：再生/一時停止 -->
       <div id="topToggle" class="top-control" role="group" aria-label="再生操作">
         <button id="playToggleBtn" class="top-btn" aria-pressed="false" aria-label="再生">再生</button>
       </div>
-
       <!-- 右上：速度操作（再生ボタンの下） -->
       <div class="overlay-right" id="overlayRight" aria-hidden="false">
         <div style="display:flex;gap:8px;align-items:center;justify-content:flex-end">
@@ -713,13 +646,11 @@
           <div id="speedDisplay" class="speed-display">1.00x</div>
           <button id="speedPlus" class="btn" aria-label="速度を上げる">＋</button>
         </div>
-
         <div class="marker-controls" role="group" aria-label="マーカー操作">
           <button id="markerJump" class="marker-btn" aria-label="マーカーへジャンプ">&gt;</button>
           <button id="markerAdd" class="marker-btn" aria-label="マーカーを追加">+</button>
           <button id="markerRemove" class="marker-btn" aria-label="マーカーを削除">-</button>
         </div>
-
         <!-- ここに A/B 関連ボタンを配置（マーカー設置ボタン類の下） -->
         <div class="ab-controls" role="group" aria-label="A/B ループ操作">
           <!-- 初期表示を要望に合わせて A / オフ / C に設定 -->
@@ -730,101 +661,78 @@
       </div>
     </div>
   </section>
-
   <script>
     const fileInput = document.getElementById('fileInput');
     const fileNameEl = document.getElementById('fileName');
     const pickBtn = document.getElementById('pickBtn');
     const reloadBtn = document.getElementById('reloadBtn');
     const clearCacheBtn = document.getElementById('clearCacheBtn');
-
     const cacheOverlay = document.getElementById('cacheOverlay');
     const cacheOverlayTitle = document.getElementById('cacheOverlayTitle');
     const cacheOverlayMsg = document.getElementById('cacheOverlayMsg');
     const cacheProgressFill = document.getElementById('cacheProgressFill');
     const cacheCancelBtn = document.getElementById('cacheCancelBtn');
     const cacheCloseBtn = document.getElementById('cacheCloseBtn');
-
     const pickerScreen = document.getElementById('pickerScreen');
     const viewer = document.getElementById('viewer');
     const video = document.getElementById('video');
     const videoWrap = document.getElementById('videoWrap');
-
     const playToggleBtn = document.getElementById('playToggleBtn');
     const speedMinus = document.getElementById('speedMinus');
     const speedPlus = document.getElementById('speedPlus');
     const speedDisplay = document.getElementById('speedDisplay');
-
     const backBtn = document.getElementById('backBtn');
-
     const back3Btn = document.getElementById('back3Btn');
     const back5Btn = document.getElementById('back5Btn');
     const fwd3Btn = document.getElementById('fwd3Btn');
     const fwd5Btn = document.getElementById('fwd5Btn');
-
     const mirrorBtn = document.getElementById('mirrorBtn');
-
     const skipGroup = document.getElementById('skipGroup');
-
     const historyList = document.getElementById('historyList');
     const clearHistoryBtn = document.getElementById('clearHistoryBtn');
     const sortBySelect = document.getElementById('sortBy');
     const sortOrderSelect = document.getElementById('sortOrder');
-
     const seekBar = document.getElementById('seekBar');
     const topBack = document.getElementById('topBack');
     const topSeek = document.getElementById('topSeek');
     const topToggle = document.getElementById('topToggle');
     const overlayRight = document.getElementById('overlayRight');
-
     const markerAddBtn = document.getElementById('markerAdd');
     const markerJumpBtn = document.getElementById('markerJump');
     const markerRemoveBtn = document.getElementById('markerRemove');
     const markerLayer = document.getElementById('markerLayer');
-
     const abSetBtn = document.getElementById('abSetBtn');
     const abLoopBtn = document.getElementById('abLoopBtn');
     const abResetBtn = document.getElementById('abResetBtn');
-
     const categorySelect = document.getElementById('categorySelect');
     const editCategoryBtn = document.getElementById('editCategoryBtn');
     const addCategoryInModal = document.getElementById('addCategoryInModal');
     const modalBackdrop = document.getElementById('modalBackdrop');
     const categoryEditorContent = document.getElementById('categoryEditorContent');
     const closeCategoryEditor = document.getElementById('closeCategoryEditor');
-
     const historyCountEl = document.getElementById('historyCount');
-
     // upload progress elements
     const uploadProgressContainer = document.getElementById('uploadProgress');
     const uploadProgressList = document.getElementById('uploadProgressList');
-
     // search elements
     const historySearch = document.getElementById('historySearch');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
-
     let currentObjectUrl = null;
     let currentHistoryId = null;
     const MAX_HISTORY = 1000;
-
     const SPEED_STEP = 0.05;
     const SPEED_MIN = 0.05;
     const SPEED_MAX = 4.0;
     let isSeeking = false;
-
     let markers = [];
-
     // A/B loop state
     let abA = null; // number (seconds) or null
     let abB = null; // number (seconds) or null
     let loopEnabled = false;
-
     // upload controllers map: key -> controller object { aborted: boolean }
     const uploadControllers = new Map();
-
     // モーダル用の一時カテゴリ配列（編集中に並び替え・追加・削除を行うため）
     let modalUsers = null;
-
     const SORT_KEY = 'videoHistorySort';
     function loadSortSettings(){
       try{
@@ -837,12 +745,10 @@
     let sortSettings = loadSortSettings();
     sortBySelect.value = sortSettings.by;
     sortOrderSelect.value = sortSettings.order;
-
     const DB_NAME = 'videoHistory';
     const STORE_NAME = 'videos';
     const META_STORE = 'entryMeta';
     let dbPromise = null;
-
     function openDB(){
       if (dbPromise) return dbPromise;
       dbPromise = new Promise((resolve, reject) => {
@@ -864,7 +770,6 @@
       });
       return dbPromise;
     }
-
     // IndexedDB のリクエストを Promise 化
     function promisifyRequest(req){
       return new Promise((resolve, reject) => {
@@ -872,7 +777,6 @@
         req.onerror = () => reject(req.error);
       });
     }
-
     // トランザクション完了を待つ（oncomplete / onerror / onabort を監視）
     function waitForTransactionComplete(tx){
       return new Promise((resolve, reject) => {
@@ -881,7 +785,6 @@
         tx.onerror = () => reject(tx.error || new Error('Transaction error'));
       });
     }
-
     async function getAllFromStore(store){
       return new Promise((resolve, reject) => {
         const req = store.getAll();
@@ -889,7 +792,6 @@
         req.onerror = () => reject(req.error);
       });
     }
-
     async function getHistory(){
       const db = await openDB();
       const tx = db.transaction(STORE_NAME, 'readonly');
@@ -899,7 +801,6 @@
       try { await waitForTransactionComplete(tx); } catch (e){ /* ignore */ }
       return all;
     }
-
     async function getEntry(id){
       const db = await openDB();
       return new Promise((resolve,reject)=>{
@@ -912,7 +813,6 @@
         req.onerror = ()=>reject(req.error);
       });
     }
-
     // ---------- 修正済み: deleteEntry (blob を確実に解放する手順を追加) ----------
     async function deleteEntry(id){
       const db = await openDB();
@@ -931,10 +831,8 @@
             } catch (e) { /* ignore */ }
             currentHistoryId = null;
           }
-
           const tx = db.transaction(STORE_NAME,'readwrite');
           const store = tx.objectStore(STORE_NAME);
-
           // first try to get, null out blob to help free space, then delete
           const getReq = store.get(Number(id));
           getReq.onsuccess = async () => {
@@ -979,7 +877,6 @@
         }
       });
     }
-
     // ---------- 修正済み: clearHistory（データベース丸ごと削除） ----------
     async function clearHistory(){
       try{
@@ -994,14 +891,12 @@
           video.load();
           currentHistoryId = null;
         } catch (e){}
-
         // abort pending uploads
         try {
           for (const ctrl of uploadControllers.values()) {
             try { ctrl.aborted = true; } catch(e){}
           }
         } catch(e){}
-
         // delete entire IndexedDB database to ensure blobs are removed
         await new Promise((resolve, reject) => {
           try {
@@ -1016,11 +911,9 @@
             reject(err);
           }
         });
-
         // reset our cached dbPromise so openDB will recreate it
         dbPromise = null;
         await openDB();
-
         // also try clearing Cache Storage (if any service worker caches exist)
         if ('caches' in window) {
           try {
@@ -1028,7 +921,6 @@
             await Promise.all(keys.map(k => caches.delete(k)));
           } catch (e) { console.warn('Cache Storage clear failed', e); }
         }
-
         // refresh UI
         populateCategorySelect();
         renderHistory();
@@ -1037,7 +929,6 @@
         throw err;
       }
     }
-
     async function trimHistoryLimit(db){
       try{
         const tx = db.transaction(STORE_NAME,'readwrite');
@@ -1053,7 +944,6 @@
         await waitForTransactionComplete(tx);
       }catch(e){console.warn(e)}
     }
-
     async function updateEntryName(id, newName){
       const db = await openDB();
       return new Promise((resolve,reject)=>{
@@ -1076,7 +966,6 @@
         req.onerror = ()=>reject(req.error);
       });
     }
-
     // 新規: 補足（note）更新関数
     async function updateEntryNote(id, newNote){
       const db = await openDB();
@@ -1100,7 +989,6 @@
         req.onerror = ()=>reject(req.error);
       });
     }
-
     // --- 新規: マーカー保存関連 (改良版: メタデータストアを使って blob 書き換えを避ける) ---
     function markersEqual(a,b){
       if (!Array.isArray(a)) a = [];
@@ -1112,7 +1000,6 @@
       }
       return true;
     }
-
     // set markers into metadata store (lightweight)
     async function setEntryMarkersMeta(id, newMarkers){
       const db = await openDB();
@@ -1131,7 +1018,6 @@
         }
       });
     }
-
     // get markers from metadata store (returns array or null)
     async function getEntryMarkersMeta(id){
       const db = await openDB();
@@ -1151,7 +1037,6 @@
         }
       });
     }
-
     async function deleteEntryMeta(id){
       try {
         const db = await openDB();
@@ -1164,7 +1049,6 @@
         // non-fatal
       }
     }
-
     // public: updateEntryMarkers will now write to META_STORE and avoid touching blob
     async function updateEntryMarkers(id, newMarkers){
       // normalize marker array
@@ -1179,15 +1063,12 @@
       // write to meta store
       return setEntryMarkersMeta(id, normalized);
     }
-
     // --- end マーカー保存関連 ---
-
     // --- 新規: カテゴリ関連 ---
     const CATS_KEY = 'videoHistoryCategories';
     // 内部固定ID: 未分類（削除不可）と全て（表示用）
     const UNCATEGORIZED_ID = 'uncategorized';
     const ALL_ID = 'all';
-
     // カラー関連ユーティリティ
     function isValidHexColor(s){
       return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(s);
@@ -1231,7 +1112,6 @@
     function contrastingTextColor(hex){
       return isLightColor(hex) ? '#111' : '#fff';
     }
-
     function loadUserCategories(){
       try {
         const raw = localStorage.getItem(CATS_KEY);
@@ -1249,7 +1129,6 @@
     function saveUserCategories(arr){
       try { localStorage.setItem(CATS_KEY, JSON.stringify(arr)); } catch(e){ console.warn('カテゴリ保存失敗', e); }
     }
-
     // ヘルパー: モーダル編集中の配列を保存して UI を更新するユーティリティ
     function saveModalUsersAndRefresh(){
       try {
@@ -1262,7 +1141,6 @@
       try { populateCategorySelect(); } catch(e){}
       try { renderHistory(); } catch(e){}
     }
-
     // カテゴリリストを UI に反映（"全て" / "未分類" / ユーザ作成分）
     function populateCategorySelect(){
       const users = loadUserCategories();
@@ -1287,7 +1165,6 @@
         categorySelect.value = ALL_ID;
       }
     }
-
     // カテゴリ作成（ユニークIDを生成）。色指定も受け付ける（prompt）
     function createCategory(name){
       const users = loadUserCategories();
@@ -1313,7 +1190,6 @@
       populateCategorySelect();
       return id;
     }
-
     // カテゴリ削除（ユーザが選択しているカテゴリのみ。未分類 / 全て は不可）
     async function deleteCategory(id){
       if (!id) return;
@@ -1344,7 +1220,6 @@
       categorySelect.value = ALL_ID;
       renderHistory();
     }
-
     // カテゴリの並び替え（上へ/下へ）
     function moveCategoryUp(id){
       const users = loadUserCategories();
@@ -1365,7 +1240,6 @@
         users[i] = tmp;
       }
     }
-
     // ヘルパー: 配列の等価比較（順序無視）
     function arraysEqualAsSets(a,b){
       if (!Array.isArray(a)) a = [];
@@ -1376,16 +1250,13 @@
       for (let i=0;i<sa.length;i++){ if (sa[i] !== sb[i]) return false; }
       return true;
     }
-
     // エントリのカテゴリを更新（newCategoryId: string | string[]）
     // 改善: 同じ内容なら書き込みを行わないガード + 簡易リトライを導入
     async function updateEntryCategory(id, newCategoryId){
       const db = await openDB();
       const normalized = Array.isArray(newCategoryId) ? newCategoryId.slice() : (newCategoryId ? [newCategoryId] : []);
       // normalize: remove ALL_ID and UNCATEGORIZED_ID from actual assigned list; UNCATEGORIZED == []
-
       const filteredNorm = normalized.filter(x => x && x !== ALL_ID && x !== UNCATEGORIZED_ID);
-
       // read current entry first to avoid unnecessary writes
       try {
         const txr = db.transaction(STORE_NAME, 'readonly');
@@ -1405,7 +1276,6 @@
         // 読み込み失敗しても後続で書き込みを試みる
         console.warn('updateEntryCategory: 現在値読み込み失敗、書き込みを試みます', e);
       }
-
       // try to write, with 3 attempts in case of transient tx error
       let attempts = 0;
       while (attempts < 3) {
@@ -1440,7 +1310,6 @@
         }
       }
     }
-
     // シンプルなキュー: 同一エントリに対する更新を直列化する（項目移動の競合防止）
     const updateQueue = new Map();
     function enqueueUpdateEntryCategory(id, newCategoryArr){
@@ -1458,9 +1327,7 @@
         return p;
       }
     }
-
     function formatBytes(n){ if (n<1024) return n + ' B'; if (n<1024*1024) return Math.round(n/1024) + ' KB'; return (n/(1024*1024)).toFixed(2) + ' MB'; }
-
     function sortItems(items){
       const by = sortSettings.by || 'created';
       const order = (sortSettings.order === 'asc') ? 1 : -1;
@@ -1472,7 +1339,6 @@
       }
       return copy;
     }
-
     function stripExtension(filename){
       if (!filename) return filename;
       const lastDot = filename.lastIndexOf('.');
@@ -1481,7 +1347,6 @@
       }
       return filename;
     }
-
     // 文字列を検索用に正規化する
     // - NFKC 正規化（半角全角等を揃える）
     // - ASCII は小文字化
@@ -1500,13 +1365,11 @@
         return t;
       } catch (err) { return String(s).toLowerCase(); }
     }
-
     // カテゴリ編集モーダルの描画（並び替えボタンを追加）
     function openCategoryEditor(){
       // modalUsers をローカルに用意して編集用に使う（保存は閉じる時に一括）
       modalUsers = loadUserCategories().slice(); // copy
       categoryEditorContent.innerHTML = '';
-
       function renderRows(){
         categoryEditorContent.innerHTML = '';
         if (modalUsers.length === 0) {
@@ -1517,7 +1380,6 @@
             const row = document.createElement('div'); row.className = 'cat-row';
             // store id for later bulk-save on close
             row.dataset.catId = c.id;
-
             const upBtn = document.createElement('button'); upBtn.className='reorder-btn'; upBtn.textContent='↑'; upBtn.title='上へ';
             const downBtn = document.createElement('button'); downBtn.className='reorder-btn'; downBtn.textContent='↓'; downBtn.title='下へ';
             const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.value = c.name || '';
@@ -1525,11 +1387,9 @@
             const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
             row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
             categoryEditorContent.appendChild(row);
-
             // disable up/down where appropriate
             if (idx === 0) upBtn.disabled = true;
             if (idx === modalUsers.length - 1) downBtn.disabled = true;
-
             upBtn.addEventListener('click', (e)=>{
               e.stopPropagation();
               if (idx > 0){
@@ -1552,7 +1412,6 @@
                 saveModalUsersAndRefresh();
               }
             });
-
             delBtn.addEventListener('click', (e)=>{
               e.stopPropagation();
               if (!confirm('この項目を削除しますか？ 削除するとその項目に属していたファイルは「未分類」に戻ります。')) return;
@@ -1565,7 +1424,6 @@
               // save modalUsers after deletion
               saveModalUsersAndRefresh();
             });
-
             // live-edit name/color locally so that closing will pick up changes
             nameIn.addEventListener('input', (ev)=>{
               const i = modalUsers.findIndex(x => x.id === c.id);
@@ -1587,29 +1445,22 @@
           });
         }
       }
-
       renderRows();
-
       modalBackdrop.style.display = 'flex';
       modalBackdrop.setAttribute('aria-hidden','false');
     }
-
     function closeCategoryEditorModal(){
       modalBackdrop.style.display = 'none';
       modalBackdrop.setAttribute('aria-hidden','true');
     }
-
     async function renderHistory(){
       historyList.innerHTML = '';
       const items = await getHistory();
-
       const finalSorted = sortItems(items || []);
-
       // 選択中カテゴリでフィルタ
       const selectedCat = categorySelect.value || ALL_ID;
       const searchTerm = (historySearch && historySearch.value) ? historySearch.value.trim() : '';
       const qnorm = normalizeForSearch(searchTerm);
-
       const filtered = finalSorted.filter(item => {
         if (selectedCat === ALL_ID) {
           // pass
@@ -1621,7 +1472,6 @@
             if (!cids || !cids.includes(selectedCat)) return false;
           }
         }
-
         // 検索条件（タイトルのみ）: 補足（note）は検索対象に含めない
         if (qnorm && qnorm.length > 0) {
           const title = stripExtension(item.name || '');
@@ -1629,12 +1479,9 @@
           // 部分一致
           if (!tnorm.includes(qnorm)) return false;
         }
-
         return true;
       });
-
       const final = filtered;
-
       // --- NEW: update history count display ---
       try {
         const total = Array.isArray(items) ? items.length : 0;
@@ -1644,34 +1491,26 @@
         }
       } catch (e) { /* ignore */ }
       // --- end new ---
-
       if (!final || final.length === 0){ historyList.innerHTML = '<div style="color:#666;padding:8px">履歴はありません</div>'; return; }
-
       // カテゴリ一覧を入手して移動セレクトに使うため整形
       const users = loadUserCategories();
       const catList = [{id: ALL_ID, name:'全て'}, {id: UNCATEGORIZED_ID, name:'未分類'}, ...users];
-
       // map id -> {name,color}
       const catMap = {};
       for (const c of users){ catMap[c.id] = {name:c.name, color: c.color || '#ffffff'}; }
-
       // 履歴を表示（サムネイルは読み込まず非表示）
       for (const it of final){
         const el = document.createElement('div');
         el.className = 'history-item';
-
         const thumb = document.createElement('div'); thumb.className='thumb';
         thumb.style.display = 'none';
-
         const meta = document.createElement('div'); meta.className='meta';
-
         const nameWrap = document.createElement('div');
         nameWrap.className = 'title-row';
         const name = document.createElement('div');
         name.className='name';
         name.textContent = stripExtension(it.name);
         nameWrap.appendChild(name);
-
         // show tag chips after title (clickable to jump to that item)
         const chips = document.createElement('div');
         chips.className = 'tag-chips';
@@ -1719,20 +1558,16 @@
           }
         }
         nameWrap.appendChild(chips);
-
         const sub = document.createElement('div'); sub.className = 'sub'; sub.textContent = formatBytes(it.size) + ' • ' + new Date(it.createdAt).toLocaleString();
         meta.appendChild(nameWrap); meta.appendChild(sub);
-
         const noteDiv = document.createElement('div'); noteDiv.className = 'note';
         noteDiv.textContent = it.note || '';
         meta.appendChild(noteDiv);
-
         const actions = document.createElement('div'); actions.className='history-actions';
         const openBtn = document.createElement('button'); openBtn.className='small-btn'; openBtn.textContent='開く';
         const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
         const editBtn = document.createElement('button'); editBtn.className='small-btn'; editBtn.textContent='名前編集';
         const editNoteBtn = document.createElement('button'); editNoteBtn.className='small-btn'; editNoteBtn.textContent='補足編集';
-
         // 移動用セレクト（複数選択） + 適用・キャンセルボタン（ユーザーが完了した時点で移動を実行）
         const moveWrap = document.createElement('div');
         moveWrap.style.marginTop = '6px';
@@ -1740,8 +1575,9 @@
         moveSelect.className = 'sort-select';
         moveSelect.setAttribute('aria-label', '項目に移動（複数選択可）');
         moveSelect.setAttribute('multiple', 'multiple');
-        // populate (exclude '全て' as it's not a target)
-        const moveOptions = [{id: UNCATEGORIZED_ID, name:'未分類'}, ...users];
+        // populate (exclude '全て' and do NOT include '未分類' sentinel in the selection UI)
+        // ユーザー要望に合わせ、選択欄に「未分類」を表示しない（未分類は「何も選択しない」ことで表現される）
+        const moveOptions = [...users]; // only user-created categories; UNCATEGORIZED is represented by no selection
         for (const c of moveOptions){
           const o = document.createElement('option');
           o.value = c.id;
@@ -1750,14 +1586,13 @@
         }
         // set current selections visually
         const currentCids = Array.isArray(it.categoryIds) ? it.categoryIds : (it.categoryId ? [it.categoryId] : []);
-        if (!currentCids || currentCids.length === 0){
-          for (const opt of moveSelect.options){
-            if (opt.value === UNCATEGORIZED_ID) opt.selected = true;
-          }
-        } else {
+        if (currentCids && currentCids.length > 0){
           for (const opt of moveSelect.options){
             if (currentCids.includes(opt.value)) opt.selected = true;
           }
+        } else {
+          // 未分類の場合は何も選択しない（UI上に「未分類」を表示しないため）
+          // leave all options unselected
         }
         // apply / cancel buttons (ユーザーが完了した時点で移動を実行)
         const applyBtn = document.createElement('button'); applyBtn.className='small-btn'; applyBtn.textContent='移動を適用';
@@ -1765,7 +1600,6 @@
         // hide the apply/cancel by default; show only when user changes selection
         applyBtn.style.display = 'none';
         cancelBtn.style.display = 'none';
-
         // detect selection changes to show buttons
         const originalSelected = Array.from(moveSelect.selectedOptions).map(o=>o.value).sort().join(',');
         moveSelect.addEventListener('change', (e)=>{
@@ -1778,19 +1612,16 @@
             cancelBtn.style.display = 'none';
           }
         });
-
         applyBtn.addEventListener('click', async (e)=>{
           e.stopPropagation();
           // disable UI to prevent double submissions
           applyBtn.disabled = true;
           cancelBtn.disabled = true;
           moveSelect.disabled = true;
-
           const opts = Array.from(moveSelect.selectedOptions).map(o=>o.value);
           // filtered: drop '未分類' sentinel from explicit assignments; UNCATEGORIZED -> []
           const filtered = opts.filter(v => v && v !== UNCATEGORIZED_ID);
           const newCatArr = filtered.length === 0 ? [] : filtered;
-
           try {
             // guard: read current entry and skip if same set (to avoid redundant writes & transient errors)
             const current = await getEntry(it.id);
@@ -1805,7 +1636,6 @@
             console.warn('applyBtn guard: 現在値取得でエラー', err);
             // 続行して更新を試みる
           }
-
           // use queue to serialize updates per entry to avoid race conditions
           enqueueUpdateEntryCategory(it.id, newCatArr).then(()=>{
             // re-enable and refresh
@@ -1822,7 +1652,6 @@
             renderHistory();
           });
         });
-
         cancelBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
           // reset selections to original
@@ -1830,9 +1659,8 @@
             opt.selected = false;
           }
           if (!currentCids || currentCids.length === 0){
-            for (const opt of moveSelect.options){
-              if (opt.value === UNCATEGORIZED_ID) opt.selected = true;
-            }
+            // 元が未分類の場合、選択欄に「未分類」を表示しない仕様のため
+            // 何も選択しない状態に戻します（＝未分類を表現）
           } else {
             for (const opt of moveSelect.options){
               if (currentCids.includes(opt.value)) opt.selected = true;
@@ -1841,16 +1669,13 @@
           applyBtn.style.display = 'none';
           cancelBtn.style.display = 'none';
         });
-
         moveWrap.appendChild(moveSelect);
         moveWrap.appendChild(applyBtn);
         moveWrap.appendChild(cancelBtn);
         meta.appendChild(moveWrap);
-
         // 「開く」ボタン等
         openBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openFromHistory(it.id); });
         delBtn.addEventListener('click', (e)=>{ e.stopPropagation(); if (confirm('この履歴を削除しますか？')) deleteEntry(it.id).then(renderHistory); });
-
         editBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
           nameWrap.innerHTML = '';
@@ -1859,10 +1684,8 @@
           const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
           const cancelBtn2 = document.createElement('button'); cancelBtn2.className='small-btn'; cancelBtn2.textContent='キャンセル';
           const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn2);
-
           nameWrap.appendChild(input); nameWrap.appendChild(editControls);
           input.focus();
-
           function finishSave(){
             const newName = input.value.trim() || it.name;
             updateEntryName(it.id, newName).then(()=>{
@@ -1870,16 +1693,13 @@
             }).catch((err)=>{ console.warn('名前更新失敗', err); alert('名前の更新に失敗しました'); renderHistory(); });
           }
           function finishCancel(){ renderHistory(); }
-
           saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
           cancelBtn2.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
-
           input.addEventListener('keydown', (ev)=>{
             if (ev.key === 'Enter') { ev.preventDefault(); finishSave(); }
             if (ev.key === 'Escape') { ev.preventDefault(); finishCancel(); }
           });
         });
-
         // 補足編集
         editNoteBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -1892,14 +1712,11 @@
           const saveBtn = document.createElement('button'); saveBtn.className='small-btn'; saveBtn.textContent='保存';
           const cancelBtn3 = document.createElement('button'); cancelBtn3.className='small-btn'; cancelBtn3.textContent='キャンセル';
           const editControls = document.createElement('div'); editControls.className='edit-controls'; editControls.appendChild(saveBtn); editControls.appendChild(cancelBtn3);
-
           noteEditWrap.appendChild(ta);
           noteEditWrap.appendChild(editControls);
-
           noteDiv.innerHTML = '';
           noteDiv.appendChild(noteEditWrap);
           ta.focus();
-
           function finishSave(){
             const newNote = ta.value;
             updateEntryNote(it.id, newNote).then(()=>{
@@ -1907,25 +1724,20 @@
             }).catch((err)=>{ console.warn('補足更新失敗', err); alert('補足の更新に失敗しました'); renderHistory(); });
           }
           function finishCancel(){ renderHistory(); }
-
           saveBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishSave(); });
           cancelBtn3.addEventListener('click', (ev)=>{ ev.stopPropagation(); finishCancel(); });
-
           ta.addEventListener('keydown', (ev)=>{
             if (ev.key === 'Escape') { ev.preventDefault(); finishCancel(); }
           });
         });
-
         actions.appendChild(openBtn);
         actions.appendChild(delBtn);
         actions.appendChild(editBtn);
         actions.appendChild(editNoteBtn);
-
         el.appendChild(thumb); el.appendChild(meta); el.appendChild(actions);
         historyList.appendChild(el);
       }
     }
-
     sortBySelect.addEventListener('change', ()=>{
       sortSettings.by = sortBySelect.value;
       saveSortSettings(sortSettings);
@@ -1936,7 +1748,6 @@
       saveSortSettings(sortSettings);
       renderHistory();
     });
-
     clearHistoryBtn.addEventListener('click', async ()=>{
       if (!confirm('履歴を全て消去しますか？')) return;
       try {
@@ -1946,12 +1757,10 @@
         alert('履歴消去中にエラーが発生しました');
       }
     });
-
     // カテゴリ選択の変更で再描画
     categorySelect.addEventListener('change', ()=>{
       renderHistory();
     });
-
     // 検索イベント
     if (historySearch) {
       historySearch.addEventListener('input', (e)=>{
@@ -1968,13 +1777,11 @@
         }
       });
     }
-
     // 項目編集モーダル
     editCategoryBtn.addEventListener('click', (e)=>{
       e.stopPropagation();
       openCategoryEditor();
     });
-
     // モーダル内の「追加」ボタン（新しい行を modalUsers に追加して再描画）
     addCategoryInModal.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -1984,7 +1791,6 @@
       modalUsers.push({ id, name, color: '#ffffff', createdAt: Date.now() });
       // immediate save after adding
       saveModalUsersAndRefresh();
-
       // re-render modal
       (function renderModalRows(){
         categoryEditorContent.innerHTML = '';
@@ -2003,10 +1809,8 @@
           const delBtn = document.createElement('button'); delBtn.className='small-btn'; delBtn.textContent='削除';
           row.appendChild(upBtn); row.appendChild(downBtn); row.appendChild(nameIn); row.appendChild(colorIn); row.appendChild(delBtn);
           categoryEditorContent.appendChild(row);
-
           if (idx === 0) upBtn.disabled = true;
           if (idx === modalUsers.length - 1) downBtn.disabled = true;
-
           upBtn.addEventListener('click', (ev)=>{
             ev.stopPropagation();
             if (idx > 0){
@@ -2054,7 +1858,6 @@
         });
       })();
     });
-
     // 閉じるボタン：モーダル内の変更をまとめて保存して閉じる（自動保存）
     closeCategoryEditor.addEventListener('click', (e)=>{
       e.stopPropagation();
@@ -2069,7 +1872,6 @@
             const users = loadUserCategories();
             const mapById = {};
             for (const u of users) mapById[u.id] = u;
-
             let changed = false;
             const newUsers = [];
             for (const row of rows) {
@@ -2082,7 +1884,6 @@
               newColor = newColor.toLowerCase();
               if (!isValidHexColor(newColor)) newColor = '#ffffff';
               newColor = expandHex(newColor);
-
               if (mapById[id]) {
                 if (mapById[id].name !== newName || (mapById[id].color || '') !== newColor) {
                   mapById[id].name = newName;
@@ -2106,17 +1907,14 @@
       renderHistory();
       closeCategoryEditorModal();
     });
-
     modalBackdrop.addEventListener('click', (e)=>{
       if (e.target === modalBackdrop) closeCategoryEditorModal();
     });
-
     function preventTouchScroll(e){
       if ((overlayRight && overlayRight.contains(e.target)) || (topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target))) return;
       e.preventDefault();
       e.stopPropagation();
     }
-
     function adjustTopSeek() {
       try {
         const margin = 8;
@@ -2125,13 +1923,11 @@
         if (skipGroup) {
           skipGroup.style.left = baseLeftMin + 'px';
         }
-
         let leftEdge = baseLeftMin;
         try {
           const bRect = topBack.getBoundingClientRect();
           leftEdge = Math.max(leftEdge, Math.round(bRect.right + margin));
         } catch (e){}
-
         try {
           const sRect = skipGroup.getBoundingClientRect();
           if (sRect.width > 0) leftEdge = Math.max(leftEdge, Math.round(sRect.right + margin));
@@ -2140,13 +1936,11 @@
             skipGroup.style.top = Math.round(backRect.bottom + 6) + 'px';
           }
         } catch (e){}
-
         let rightEdge = 12;
         try {
           const tRect = topToggle.getBoundingClientRect();
           rightEdge = Math.max(12, Math.round(window.innerWidth - tRect.left + margin));
         } catch (e){}
-
         const minSeekWidth = 180;
         const available = window.innerWidth - leftEdge - rightEdge;
         if (available < minSeekWidth) {
@@ -2156,63 +1950,49 @@
           leftEdge = Math.max(6, leftEdge - reduceLeft);
           rightEdge = Math.max(6, rightEdge - reduceRight);
         }
-
         if (topSeek) {
           topSeek.style.left = leftEdge + 'px';
           topSeek.style.right = rightEdge + 'px';
         }
-
         repositionMarkerLayer();
       } catch (err) {
         if (topSeek) { topSeek.style.left = ''; topSeek.style.right = ''; }
       }
     }
-
     window.addEventListener('resize', () => { adjustTopSeek(); renderMarkers(); });
     window.addEventListener('orientationchange', () => { setTimeout(adjustTopSeek, 80); setTimeout(renderMarkers, 100); });
     window.addEventListener('load', () => { setTimeout(adjustTopSeek, 120); setTimeout(renderMarkers, 140); });
-
     async function openViewer(autoPlay = false){
       if (!currentObjectUrl) return;
       pickerScreen.style.display = 'none';
       viewer.style.display = 'block';
       viewer.setAttribute('aria-hidden','false');
-
       // hide reload button on viewer screen
       if (reloadBtn) reloadBtn.style.display = 'none';
-
       video.controls = false;
-
       video.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
       video.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
       video.addEventListener('touchmove', preventTouchScroll, {passive:false});
       video.addEventListener('click', (e) => { e.stopPropagation(); }, {passive:false});
       video.addEventListener('dblclick', (e) => { e.stopPropagation(); }, {passive:false});
-
       videoWrap.addEventListener('touchstart', (e) => { e.stopPropagation(); }, {passive:false});
       videoWrap.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:false});
       videoWrap.addEventListener('touchmove', preventTouchScroll, {passive:false});
-
       if (autoPlay) {
         try { await video.play(); } catch (err) { console.warn('自動再生できませんでした:', err); }
       }
-
       // Reset A/B when opening a new file (keeps behavior predictable per file)
       abA = null;
       abB = null;
       loopEnabled = false;
       updateABUI();
-
       updateToggleButton();
       updateSpeedDisplay();
-
       setTimeout(adjustTopSeek, 60);
       setTimeout(adjustTopSeek, 300);
     }
-
     // pickBtn: 既存の <input> を開く
     pickBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
-
     /**
      * 変更点（要件反映）:
      * - 複数選択をサポート (input に multiple を追加済み)
@@ -2221,37 +2001,29 @@
      * - 進捗 UI を追加（各ファイルごとにインデックス表示）
      * - 各ファイルごとにキャンセル可能にした（uploadControllers を通じて中断）
      */
-
     // ---------- ここから：進捗UI用ユーティリティ ----------
     function createProgressItem(fileName, fileSize, index){
       // ensure container visible
       if (uploadProgressContainer) uploadProgressContainer.style.display = '';
-
       const item = document.createElement('div');
       item.className = 'progress-item';
       item.setAttribute('role','listitem');
-
       const idx = document.createElement('div');
       idx.className = 'index-badge';
       idx.textContent = String(index);
-
       const main = document.createElement('div');
       main.className = 'progress-main';
-
       const title = document.createElement('div');
       title.className = 'progress-title';
       title.textContent = fileName;
       title.title = fileName;
-
       const row = document.createElement('div');
       row.className = 'progress-row';
-
       const barBg = document.createElement('div');
       barBg.className = 'progress-bar-bg';
       const barFill = document.createElement('div');
       barFill.className = 'progress-bar-fill';
       barBg.appendChild(barFill);
-
       const meta = document.createElement('div');
       meta.className = 'progress-meta';
       const percent = document.createElement('div');
@@ -2260,28 +2032,21 @@
       const size = document.createElement('div');
       size.className = 'progress-size';
       size.textContent = formatBytes(fileSize);
-
       meta.appendChild(percent);
       meta.appendChild(size);
-
       row.appendChild(barBg);
       row.appendChild(meta);
-
       main.appendChild(title);
       main.appendChild(row);
-
       // cancel button
       const cancelBtn = document.createElement('button');
       cancelBtn.className = 'small-btn progress-cancel-btn';
       cancelBtn.textContent = 'キャンセル';
       cancelBtn.title = 'このファイルのアップロードをキャンセルします';
-
       item.appendChild(idx);
       item.appendChild(main);
       item.appendChild(cancelBtn);
-
       uploadProgressList.appendChild(item);
-
       return {
         el: item,
         cancelBtn,
@@ -2322,7 +2087,6 @@
         }
       };
     }
-
     /**
      * saveFileToHistoryWithProgress:
      * - UI 用にチャンク読みして進捗を報告（既存の saveFileToHistory をそのまま呼ぶ）
@@ -2387,7 +2151,6 @@
       }
     }
     // ---------- ここまで：進捗UI用ユーティリティ ----------
-
     // ファイル選択（複数対応）：選択したファイルを履歴に追加し画面遷移しない
     fileInput.addEventListener('change', async () => {
       const files = fileInput.files;
@@ -2397,7 +2160,6 @@
         try { uploadProgressContainer.style.display = 'none'; uploadProgressList.innerHTML = ''; } catch(e){}
         return;
       }
-
       // 表示は簡易に（単数は詳細、複数は個数表示）
       if (files.length === 1) {
         const f = files[0];
@@ -2405,13 +2167,11 @@
       } else {
         fileNameEl.textContent = `${files.length} 個のファイルが選択されました`;
       }
-
       // 保存処理（順次） — 進捗 UI を追加
       const savedIds = [];
       // clear previous progress items if any
       uploadProgressList.innerHTML = '';
       uploadProgressContainer.style.display = '';
-
       const fileArr = Array.from(files);
       // create controllers for each file so user can cancel while queued or uploading
       const taskIds = fileArr.map((f, i) => 'task_' + Date.now() + '_' + i + '_' + Math.floor(Math.random()*1000));
@@ -2420,11 +2180,9 @@
         const idx = i + 1;
         const taskId = taskIds[i];
         const ui = createProgressItem(stripExtension(f.name), f.size, idx);
-
         // controller: simple abort flag
         const controller = { aborted: false };
         uploadControllers.set(taskId, controller);
-
         // wire up cancel button
         ui.cancelBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -2435,7 +2193,6 @@
           ui.setPercent(0);
           ui.cancelBtn.disabled = true;
         });
-
         try {
           // check if already cancelled before starting
           if (controller.aborted) {
@@ -2443,11 +2200,9 @@
             uploadControllers.delete(taskId);
             continue;
           }
-
           const id = await saveFileToHistoryWithProgress(f, (pct) => {
             try { ui.setPercent(pct); } catch(e){}
           }, { signal: controller });
-
           if (id) {
             savedIds.push(id);
             ui.markDone();
@@ -2468,23 +2223,19 @@
           uploadControllers.delete(taskId);
         }
       }
-
       // 入力をクリアして同じファイルを再度選べるようにする
       try { fileInput.value = ''; } catch(e){}
-
       // 最後に履歴を更新（自動でビューアへは遷移しない）
       if (savedIds.length > 0) {
         currentHistoryId = savedIds[savedIds.length - 1];
       }
       renderHistory();
-
       // 全てのファイル処理が終わったら進捗バーを画面から消す（要求通り）
       try {
         uploadProgressContainer.style.display = 'none';
         uploadProgressList.innerHTML = '';
       } catch (e) { console.warn('upload progress hide failed', e); }
     });
-
     // ドラッグ＆ドロップ対応: pickerScreen 上でのドロップを受けてファイルを履歴へ追加
     pickerScreen.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -2501,19 +2252,16 @@
       if (!dt) return;
       const files = dt.files;
       if (!files || files.length === 0) return;
-
       if (files.length === 1) {
         const f = files[0];
         fileNameEl.textContent = f.name + ' (' + Math.round(f.size/1024) + ' KB)';
       } else {
         fileNameEl.textContent = `${files.length} 個のファイルをドロップしました`;
       }
-
       const savedIds = [];
       // clear previous progress items if any
       uploadProgressList.innerHTML = '';
       uploadProgressContainer.style.display = '';
-
       const fileArr = Array.from(files);
       const taskIds = fileArr.map((f, i) => 'task_' + Date.now() + '_' + i + '_' + Math.floor(Math.random()*1000));
       for (let i = 0; i < fileArr.length; i++) {
@@ -2521,10 +2269,8 @@
         const idx = i + 1;
         const taskId = taskIds[i];
         const ui = createProgressItem(stripExtension(f.name), f.size, idx);
-
         const controller = { aborted: false };
         uploadControllers.set(taskId, controller);
-
         ui.cancelBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
           if (controller.aborted) return;
@@ -2533,18 +2279,15 @@
           ui.setPercent(0);
           ui.cancelBtn.disabled = true;
         });
-
         try {
           if (controller.aborted) {
             ui.markCancelled();
             uploadControllers.delete(taskId);
             continue;
           }
-
           const id = await saveFileToHistoryWithProgress(f, (pct) => {
             try { ui.setPercent(pct); } catch(e){}
           }, { signal: controller });
-
           if (id) {
             savedIds.push(id);
             ui.markDone();
@@ -2567,23 +2310,19 @@
         currentHistoryId = savedIds[savedIds.length - 1];
       }
       renderHistory();
-
       // 全てのファイル処理が終わったら進捗バーを画面から消す（要求通り）
       try {
         uploadProgressContainer.style.display = 'none';
         uploadProgressList.innerHTML = '';
       } catch (e) { console.warn('upload progress hide failed', e); }
     }, {passive:false});
-
     async function openFromHistory(id){
       const entry = await getEntry(id);
       if (!entry) return alert('履歴が見つかりませんでした');
-
       if (!entry.blob) {
         alert('この履歴は容量節約のため動画本体が保存されていません（再度ファイルを開いてください）');
         return;
       }
-
       if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
       currentObjectUrl = URL.createObjectURL(entry.blob);
       video.src = currentObjectUrl;
@@ -2591,7 +2330,6 @@
       video.playbackRate = 1.0;
       currentHistoryId = entry.id;
       fileNameEl.textContent = entry.name + ' (' + Math.round(entry.size/1024) + ' KB)';
-
       // --- 変更: DB に保存してあるマーカーを metadata store から読み込んで反映 ---
       try {
         const metaMarkers = await getEntryMarkersMeta(entry.id);
@@ -2606,18 +2344,14 @@
               (Array.isArray(entry.markerTimes) ? entry.markerTimes.slice() : []);
       }
       // --- end change ---
-
       clearMarkerElements();
-
       // reset AB when opening a new item (predictable per-file behavior)
       abA = null;
       abB = null;
       loopEnabled = false;
       updateABUI();
-
       await openViewer(true);
     }
-
     async function togglePlay() {
       if (video.paused || video.ended) {
         try { await video.play(); } catch (err) { console.warn('再生できませんでした:', err); alert('再生できませんでした。ページの許可や操作を確認してください。'); }
@@ -2627,7 +2361,6 @@
       updateToggleButton();
       setTimeout(adjustTopSeek, 30);
     }
-
     function updateToggleButton() {
       if (video.paused || video.ended) {
         playToggleBtn.textContent = '再生';
@@ -2637,9 +2370,7 @@
         playToggleBtn.setAttribute('aria-pressed','true');
       }
     }
-
     playToggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
-
     function updateSpeedDisplay() { speedDisplay.textContent = video.playbackRate.toFixed(2) + 'x'; }
     function changeSpeed(delta) {
       let newRate = Math.round((video.playbackRate + delta) / SPEED_STEP) * SPEED_STEP;
@@ -2650,7 +2381,6 @@
     }
     speedMinus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(-SPEED_STEP); });
     speedPlus.addEventListener('click', (e)=>{ e.stopPropagation(); changeSpeed(SPEED_STEP); });
-
     function seekBy(deltaSec){
       if (!video.duration || !isFinite(video.duration)) return;
       let t = video.currentTime + deltaSec;
@@ -2658,16 +2388,13 @@
       if (t > video.duration) t = video.duration;
       video.currentTime = t;
     }
-
     back3Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(-3); });
     back5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(-5); });
     fwd3Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(3); });
     fwd5Btn.addEventListener('click', (e)=>{ e.stopPropagation(); seekBy(5); });
-
     [back3Btn,back5Btn,fwd3Btn,fwd5Btn].forEach(btn=>{
       if (btn) btn.addEventListener('touchend', (e)=>{ e.stopPropagation(); }, {passive:true});
     });
-
     if (mirrorBtn) {
       mirrorBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -2675,17 +2402,14 @@
       });
       mirrorBtn.addEventListener('touchend', (e) => { e.stopPropagation(); }, {passive:true});
     }
-
     function toggleMirror(){
       const isNowMirrored = video.classList.toggle('mirrored');
       if (mirrorBtn) {
         mirrorBtn.setAttribute('aria-pressed', isNowMirrored ? 'true' : 'false');
       }
     }
-
     backBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-
       // --- 追加: 現在のマーカーを DB の meta store に保存（ファイル単位） ---
       try {
         if (currentHistoryId != null) {
@@ -2698,47 +2422,37 @@
         // 保存失敗でも画面を戻す（という仕様）
       }
       // --- 保存終了 ---
-
       video.pause();
       video.removeAttribute('src');
       video.load();
-
       if (currentObjectUrl) {
         URL.revokeObjectURL(currentObjectUrl);
         currentObjectUrl = null;
       }
-
       try {
         video.removeEventListener('touchmove', preventTouchScroll);
         videoWrap.removeEventListener('touchmove', preventTouchScroll);
       } catch (err){}
-
       viewer.style.display = 'none';
       viewer.setAttribute('aria-hidden','true');
       pickerScreen.style.display = 'flex';
-
       fileInput.value = '';
       fileNameEl.textContent = 'まだファイルが選択されていません';
-
       markers = [];
       clearMarkerElements();
-
       // reset A/B loop state when returning to picker
       abA = null;
       abB = null;
       loopEnabled = false;
       updateABUI();
-
       // ミラー状態リセット（見た目を統一）
       if (video.classList.contains('mirrored')) {
         video.classList.remove('mirrored');
         if (mirrorBtn) { mirrorBtn.setAttribute('aria-pressed','false'); }
       }
-
       // show reload button again when returning to picker screen
       if (reloadBtn) reloadBtn.style.display = '';
     });
-
     // A/B helpers
     function formatTimeForLabel(sec){
       if (!isFinite(sec)) return '0:00';
@@ -2749,7 +2463,6 @@
         return `${mm}:${ss}`;
       })(sec);
     }
-
     function updateABUI(){
       // Update the A/B set button label and loop button
       // 要望: A を指定する段階は「A」、B を指定する段階は「B」と表示
@@ -2764,14 +2477,11 @@
       // loop button: 表示は「オン」「オフ」
       abLoopBtn.setAttribute('aria-pressed', loopEnabled ? 'true' : 'false');
       abLoopBtn.textContent = loopEnabled ? 'オン' : 'オフ';
-
       // ABリセットボタンは常に「C」
       abResetBtn.textContent = 'C';
-
       // visually update AB markers on seek bar
       renderMarkers();
     }
-
     // set/reset A/B via a single button: first press sets A, next press sets B, after both are set the button will show both.
     abSetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -2810,7 +2520,6 @@
         return;
       }
     });
-
     abLoopBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       // toggle loop but only effective when A and B are set
@@ -2821,7 +2530,6 @@
       loopEnabled = !loopEnabled;
       updateABUI();
     });
-
     abResetBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       abA = null;
@@ -2829,24 +2537,19 @@
       loopEnabled = false;
       updateABUI();
     });
-
     function clearMarkerElements(){
       while (markerLayer.firstChild) markerLayer.removeChild(markerLayer.firstChild);
     }
-
     function renderMarkers(){
       clearMarkerElements();
       if (!markers && abA == null && abB == null) return;
       const dur = (video && isFinite(video.duration)) ? video.duration : null;
       if (!dur) return;
-
       const seekRect = seekBar.getBoundingClientRect();
       const layerRect = markerLayer.getBoundingClientRect();
       if (seekRect.width <= 0) return;
-
       const markerW = 2;
       const markerH = 12;
-
       // normal markers
       if (markers && markers.length > 0) {
         markers.forEach((t, idx) => {
@@ -2854,18 +2557,15 @@
           el.className = 'marker';
           el.setAttribute('role','presentation');
           el.setAttribute('aria-label', `マーカー ${formatTimeForLabel(t)}`);
-
           const frac = Math.max(0, Math.min(1, t / dur));
           const leftOnSeekPx = frac * seekRect.width;
           const leftPx = seekRect.left + leftOnSeekPx - layerRect.left - (markerW / 2);
           const topPx = (seekRect.top + (seekRect.height / 2)) - layerRect.top - (markerH / 2);
-
           el.style.left = `${Math.round(leftPx)}px`;
           el.style.top = `${Math.round(topPx)}px`;
           markerLayer.appendChild(el);
         });
       }
-
       // A/B markers (if set)
       try {
         if (abA != null && isFinite(abA)) {
@@ -2900,7 +2600,6 @@
         // ignore render errors
       }
     }
-
     markerAddBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!video || !isFinite(video.duration)) { return; }
@@ -2913,7 +2612,6 @@
       markers.push(t);
       markers.sort((a,b)=>a-b);
       renderMarkers();
-
       // 自動保存: 現在開いている履歴があれば非ブロッキングにメタストアへ即時保存（軽量）
       try {
         if (currentHistoryId != null) {
@@ -2923,7 +2621,6 @@
         }
       } catch (err) { console.warn('marker add save err', err); }
     });
-
     function findPreviousMarkerIndex(referenceTime) {
       if (!markers || markers.length === 0) return -1;
       const EPS = 1e-6;
@@ -2934,7 +2631,6 @@
       }
       return idx;
     }
-
     markerJumpBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!markers || markers.length === 0) return;
@@ -2946,7 +2642,6 @@
       const pct = (video.currentTime / video.duration) * 100;
       seekBar.value = pct;
     });
-
     markerRemoveBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!markers || markers.length === 0) return;
@@ -2958,7 +2653,6 @@
       }
       markers.splice(idx, 1);
       renderMarkers();
-
       // 自動保存: 削除後すぐにメタストアへ保存（軽量）
       try {
         if (currentHistoryId != null) {
@@ -2967,17 +2661,13 @@
         }
       } catch (err) { console.warn('marker remove save err', err); }
     });
-
     function repositionMarkerLayer(){
       renderMarkers();
     }
-
     // formatTimeForLabel already defined above
-
     video.addEventListener('loadeddata', () => { renderMarkers(); });
     video.addEventListener('seeked', () => { renderMarkers(); });
     window.addEventListener('resize', () => { renderMarkers(); });
-
     /**
     * 以下は履歴保存処理（saveFileToHistory）です。
     * 既存の挙動を極力変えずに、ファイル(blob)を IndexedDB に保存する仕様はそのまま維持しています。
@@ -2986,7 +2676,6 @@
     async function saveFileToHistory(file){
       try{
         const db = await openDB();
-
         // --- 既存チェック（readonly） ---
         try {
           const txr = db.transaction(STORE_NAME, 'readonly');
@@ -3014,12 +2703,10 @@
           // 既存チェック失敗しても保存自体を試みる（ログだけ）
           console.warn('既存チェックに失敗しました（続行します）', e);
         }
-
         // --- 新規追加（readwrite） ---
         // 現在選択中のカテゴリを取得（"全て" の場合は未分類にする）
         const selCat = (categorySelect && categorySelect.value) ? categorySelect.value : ALL_ID;
         const assignCatArr = (selCat === ALL_ID || selCat === UNCATEGORIZED_ID) ? [] : [selCat];
-
         const entry = {
           name: file.name,
           size: file.size,
@@ -3031,7 +2718,6 @@
           categoryIds: assignCatArr, // 複数対応: 空配列=未分類
           markers: [] // 新規: マーカー情報をここで保持（ファイルごと） — ただし今後は meta store を優先
         };
-
         try {
           const tx = db.transaction(STORE_NAME, 'readwrite');
           const store = tx.objectStore(STORE_NAME);
@@ -3091,7 +2777,6 @@
         }
       }catch(err){ console.warn('保存に失敗しました', err); return null; }
     }
-
     // --- AB loop enforcement: called on timeupdate ---
     function handleABLoop() {
       // Conditions: loopEnabled true, abA and abB set, valid numbers, and B > A + small EPS
@@ -3123,24 +2808,20 @@
         }
       }
     }
-
     video.addEventListener('timeupdate', () => {
       if (!isSeeking && video.duration && isFinite(video.duration)) {
         const pct = (video.currentTime / video.duration) * 100;
         seekBar.value = pct;
       }
       updateToggleButton();
-
       // check A/B loop enforcement on every timeupdate (lightweight)
       try { handleABLoop(); } catch (err) { /* ignore */ }
     });
-
     video.addEventListener('loadedmetadata', () => {
       seekBar.value = 0;
       updateToggleButton();
       renderMarkers();
     });
-
     seekBar.addEventListener('input', (e) => { isSeeking = true; });
     seekBar.addEventListener('change', (e) => {
       const pct = Number(seekBar.value);
@@ -3151,7 +2832,6 @@
     });
     seekBar.addEventListener('click', (e)=>e.stopPropagation());
     seekBar.addEventListener('touchend', (e)=>e.stopPropagation(), {passive:true});
-
     video.addEventListener('play', updateToggleButton);
     video.addEventListener('pause', updateToggleButton);
     video.addEventListener('ended', () => {
@@ -3164,7 +2844,6 @@
         } catch (err) {}
       }
     });
-
     function tryStartOnTap(e){
       if (!(video.paused || video.ended)) return;
       if ((topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target)) || (overlayRight && overlayRight.contains(e.target)) || (skipGroup && skipGroup.contains(e.target))) {
@@ -3173,14 +2852,11 @@
       video.play().catch(()=>{});
       updateToggleButton();
     }
-
     viewer.addEventListener('click', tryStartOnTap);
     viewer.addEventListener('touchend', tryStartOnTap, {passive:true});
-
     pickBtn.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') fileInput.click();
     });
-
     if (reloadBtn) {
       reloadBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -3189,7 +2865,6 @@
         }
       });
     }
-
     /**
      * 新規: キャッシュ削除処理（進捗表示 + キャンセル対応）
      *
@@ -3204,13 +2879,11 @@
      *  - 最終的な deleteDatabase
      * のように詳細なメッセージと部分的な割合を表示します。
      */
-
     // 新規: IndexedDB をより細かく削除するユーティリティ
     async function clearIndexedDBDetailed(controller, updateProgress) {
       // updateProgress(pct, msg)
       try {
         updateProgress(36, 'IndexedDB をオープンしています…');
-
         // close any existing open DB connection cached in dbPromise
         try {
           if (dbPromise) {
@@ -3222,7 +2895,6 @@
             dbPromise = null;
           }
         } catch(e){}
-
         // Attempt to open DB to enumerate entries
         let db = null;
         try {
@@ -3238,9 +2910,7 @@
           console.warn('DB open failed (will fallback to deleteDatabase):', err);
           db = null;
         }
-
         if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-
         if (!db) {
           updateProgress(46, 'IndexedDB のオープンに失敗しました — 直接削除を試みます…');
           // fallback: attempt to delete database directly
@@ -3259,17 +2929,14 @@
           });
           return;
         }
-
         // if we have a db, try to enumerate items in the specified store(s)
         let total = 0;
         let deleted = 0;
-
         try {
           updateProgress(46, 'IndexedDB のエントリを列挙しています…');
           const storesToCheck = [];
           if (db.objectStoreNames.contains(STORE_NAME)) storesToCheck.push(STORE_NAME);
           if (db.objectStoreNames.contains(META_STORE)) storesToCheck.push(META_STORE);
-
           let allEntries = [];
           for (const sname of storesToCheck) {
             const tx = db.transaction(sname, 'readonly');
@@ -3282,11 +2949,8 @@
               allEntries = allEntries.concat(annotated);
             }
           }
-
           total = allEntries.length;
-
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-
           if (total === 0) {
             updateProgress(64, '削除するエントリはありません。DB を削除します…');
           } else {
@@ -3337,9 +3001,7 @@
         } finally {
           try { db.close(); } catch(e){}
         }
-
         if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
-
         // Finally, delete the DB itself to ensure metadata is removed
         updateProgress(84, 'IndexedDB を完全に削除しています（最終処理）…');
         await new Promise((resolve, reject) => {
@@ -3355,7 +3017,6 @@
             reject(err);
           }
         });
-
         // done
         updateProgress(92, 'IndexedDB の削除が完了しました（最終調整中）…');
         // small pause for UI
@@ -3367,15 +3028,12 @@
         throw err;
       }
     }
-
     if (clearCacheBtn) {
       clearCacheBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm('アプリ内のキャッシュ（保存された動画データなど）を完全に削除しますか？ この操作は元に戻せません。')) return;
-
         // simple controller
         const controller = { aborted: false };
-
         // show overlay
         cacheOverlay.setAttribute('aria-hidden', 'false');
         cacheOverlayTitle.textContent = 'キャッシュを削除しています…';
@@ -3383,7 +3041,6 @@
         cacheProgressFill.style.width = '6%';
         cacheCancelBtn.disabled = false;
         cacheCloseBtn.style.display = 'none';
-
         // cancel handler
         const onCancel = () => {
           controller.aborted = true;
@@ -3391,7 +3048,6 @@
           cacheCancelBtn.disabled = true;
         };
         cacheCancelBtn.addEventListener('click', onCancel, { once: true });
-
         // helper to update progress and check abort
         function updateProgress(pct, msg) {
           try {
@@ -3399,7 +3055,6 @@
           } catch (e){}
           if (msg) cacheOverlayMsg.textContent = msg;
         }
-
         try {
           // Step 1: revoke object URLs and stop playback
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -3415,7 +3070,6 @@
             currentHistoryId = null;
           } catch (e) {}
           await new Promise(r => setTimeout(r, 140)); // small visual pause
-
           // Step 2: abort pending uploads
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
           updateProgress(18, '保留中のアップロードを中止しています...');
@@ -3425,7 +3079,6 @@
             }
           } catch (e) {}
           await new Promise(r => setTimeout(r, 160));
-
           // Step 3: delete indexedDB database (detailed)
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
           updateProgress(30, 'IndexedDB の削除準備をしています...');
@@ -3459,7 +3112,6 @@
             }
           }
           await new Promise(r => setTimeout(r, 180));
-
           // Step 4: clear Cache Storage (service worker caches)
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
           updateProgress(68, 'Cache Storage を削除しています...');
@@ -3480,7 +3132,6 @@
             }
           }
           await new Promise(r => setTimeout(r, 120));
-
           // Step 5: final UI refresh
           if (controller.aborted) throw new DOMException('Aborted', 'AbortError');
           updateProgress(92, 'ユーザーインターフェースを更新しています...');
@@ -3489,18 +3140,15 @@
             await renderHistory();
           } catch (e) { console.warn('UI refresh failed', e); }
           await new Promise(r => setTimeout(r, 140));
-
           // finished
           updateProgress(100, '完了しました');
           cacheOverlayMsg.textContent = 'キャッシュを削除しました';
           cacheCancelBtn.style.display = 'none';
           cacheCloseBtn.style.display = '';
           cacheCloseBtn.disabled = false;
-
           cacheCloseBtn.addEventListener('click', () => {
             cacheOverlay.setAttribute('aria-hidden', 'true');
           }, { once: true });
-
           alert('アプリのキャッシュ（IndexedDB と Cache Storage）を削除しました。');
         } catch (err) {
           // aborted or error
@@ -3531,12 +3179,11 @@
         }
       });
     }
-
     window.addEventListener('beforeunload', () => {
       if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
-
     (async ()=>{ try{ await openDB(); populateCategorySelect(); await renderHistory(); }catch(e){ console.warn(e); } })();
   </script>
 </body>
 </html>
+
