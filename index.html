@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
@@ -82,11 +83,11 @@
       justify-content:center;
       box-sizing:border-box;
     }
-    /* 変更: キャッシュクリアボタンを左端に配置 */
-    #clearCacheBtn {
+    /* 変更: 左上のトグルボタン（サイドパネル開閉） */
+    #panelToggleBtn {
       position: absolute;
       top: 12px;
-      left: 12px; /* ← 左端に移動 */
+      left: 12px;
       z-index: 1200;
       height: calc(var(--ctrl-size) * 0.60);
       min-width: calc(var(--ctrl-size) * 0.60);
@@ -96,6 +97,20 @@
       display:inline-flex;
       align-items:center;
       justify-content:center;
+      box-sizing:border-box;
+    }
+    /* side panel 内の clearCacheBtn は通常フローに */
+    .side-panel #clearCacheBtn {
+      position: relative;
+      top: auto;
+      left: auto;
+      height: calc(var(--ctrl-size) * 0.75);
+      min-width: 120px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:8px 12px;
+      margin: 8px 0 12px 0;
       box-sizing:border-box;
     }
     /* キャッシュ削除時に表示するオーバーレイ（進捗） */
@@ -115,7 +130,7 @@
       display: none;
       align-items: center;
       gap: 12px;
-      box-sizing: border-box;
+      box-sizing:border-box;
       border: 1px solid #e6f0ff;
     }
     .cache-overlay[aria-hidden="false"] { display:flex; }
@@ -512,6 +527,49 @@
       font-size:13px;
     }
     .progress-item.cancelled{opacity:0.6}
+
+    /* ========== 新規追加: サイドパネル / バックドロップ ========== */
+    .panel-backdrop {
+      position: fixed;
+      left: 0; top: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.32);
+      z-index: 1280;
+      display: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .panel-backdrop.show { display: block; }
+
+    .side-panel {
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: -340px; /* closed */
+      width: 320px;
+      max-width: 92%;
+      background: #fff;
+      z-index: 1290;
+      box-shadow: 6px 0 28px rgba(0,0,0,0.36);
+      transition: left .26s cubic-bezier(.2,.8,.2,1);
+      padding: 16px;
+      box-sizing: border-box;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .side-panel.open { left: 0; }
+
+    .side-panel .panel-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+      margin-bottom:12px;
+    }
+    .side-panel h3 { margin:0; font-size:16px; color:#08345f; }
+    .side-panel .panel-close {
+      appearance:none;border:0;background:transparent;font-size:18px;cursor:pointer;padding:6px;border-radius:8px;
+    }
+    .side-panel .panel-content { color:#111; }
+    /* ======================================================= */
   </style>
 </head>
 <body>
@@ -519,8 +577,37 @@
   <main id="pickerScreen" class="center" aria-live="polite">
     <!-- 再読み込みボタンをページ内の左上に配置 -->
     <button id="reloadBtn" class="btn muted" type="button" title="ページを再読み込みします" aria-label="ページを再読み込み">再読み込み</button>
-    <!-- 追加: キャッシュ削除ボタン（左端に移動済み） -->
-    <button id="clearCacheBtn" class="btn muted" type="button" title="アプリ内キャッシュを削除します" aria-label="アプリ内キャッシュを削除">キャッシュ削除</button>
+    <!-- 左上: サイドパネル開閉ボタン（新設） -->
+    <button id="panelToggleBtn" class="btn muted" type="button" title="サイドパネルを開く" aria-label="サイドパネルを開く">☰</button>
+
+    <!-- サイドパネル用バックドロップ（クリックで閉じる） -->
+    <div id="panelBackdrop" class="panel-backdrop" aria-hidden="true"></div>
+
+    <!-- サイドパネル（デフォルト閉） -->
+    <aside id="sidePanel" class="side-panel" aria-hidden="true" role="dialog" aria-label="サイドパネル">
+      <div class="panel-header">
+        <h3>メニュー</h3>
+        <button id="panelCloseBtn" class="panel-close" aria-label="閉じる">✕</button>
+      </div>
+      <div class="panel-content">
+        <!-- 変更: サイドパネルの項目順を指定（ホーム / 新しいページ / キャッシュ削除） -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px">
+          <!-- ホームへ（このページ） -->
+          <a href="index.html" class="btn muted" role="button" style="text-align:left" aria-label="ホームへ移動">ホーム</a>
+          <!-- 新しいページへ -->
+          <a href="newpage.html" class="btn muted" role="button" style="text-align:left" aria-label="新しいページへ移動">新しいページ</a>
+        </div>
+
+        <!-- ここに既存のキャッシュ削除ボタンを配置 -->
+        <button id="clearCacheBtn" class="btn muted" type="button" title="アプリ内キャッシュを削除します" aria-label="アプリ内キャッシュを削除">キャッシュ削除</button>
+
+        <!-- 追加のパネル内コンテンツ（必要に応じて拡張可能） -->
+        <div style="margin-top:8px;color:#666;font-size:13px">
+          キャッシュ削除ボタンは IndexedDB と Cache Storage を削除します。操作は元に戻せません。
+        </div>
+      </div>
+    </aside>
+
     <!-- キャッシュ削除時の進捗オーバーレイ -->
     <div id="cacheOverlay" class="cache-overlay" aria-hidden="true">
       <div class="status">
@@ -717,6 +804,13 @@
     // search elements
     const historySearch = document.getElementById('historySearch');
     const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+    // サイドパネル要素
+    const panelToggleBtn = document.getElementById('panelToggleBtn');
+    const sidePanel = document.getElementById('sidePanel');
+    const panelBackdrop = document.getElementById('panelBackdrop');
+    const panelCloseBtn = document.getElementById('panelCloseBtn');
+
     let currentObjectUrl = null;
     let currentHistoryId = null;
     const MAX_HISTORY = 1000;
@@ -1910,6 +2004,36 @@
     modalBackdrop.addEventListener('click', (e)=>{
       if (e.target === modalBackdrop) closeCategoryEditorModal();
     });
+
+    // サイドパネルの開閉ロジック
+    function openPanel(){
+      sidePanel.classList.add('open');
+      sidePanel.setAttribute('aria-hidden','false');
+      panelBackdrop.classList.add('show');
+      panelBackdrop.setAttribute('aria-hidden','false');
+      // update toggle button title
+      panelToggleBtn.title = 'サイドパネルを閉じる';
+      panelToggleBtn.setAttribute('aria-pressed', 'true');
+    }
+    function closePanel(){
+      sidePanel.classList.remove('open');
+      sidePanel.setAttribute('aria-hidden','true');
+      panelBackdrop.classList.remove('show');
+      panelBackdrop.setAttribute('aria-hidden','true');
+      panelToggleBtn.title = 'サイドパネルを開く';
+      panelToggleBtn.setAttribute('aria-pressed', 'false');
+    }
+    function togglePanel(){
+      if (sidePanel.classList.contains('open')) closePanel();
+      else openPanel();
+    }
+    panelToggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePanel(); });
+    panelCloseBtn.addEventListener('click', (e)=>{ e.stopPropagation(); closePanel(); });
+    // バックドロップクリックで閉じる（画面のどこかを押すと閉じる要件）
+    panelBackdrop.addEventListener('click', (e) => { closePanel(); });
+    // パネル内のクリックはバブリングを止めて誤閉じを防ぐ
+    sidePanel.addEventListener('click', (e) => { e.stopPropagation(); });
+
     function preventTouchScroll(e){
       if ((overlayRight && overlayRight.contains(e.target)) || (topBack && topBack.contains(e.target)) || (topSeek && topSeek.contains(e.target)) || (topToggle && topToggle.contains(e.target))) return;
       e.preventDefault();
@@ -2088,12 +2212,12 @@
       };
     }
     /**
-     * saveFileToHistoryWithProgress:
-     * - UI 用にチャンク読みして進捗を報告（既存の saveFileToHistory をそのまま呼ぶ）
-     * - options.signal: { aborted: boolean } をチェックして中断できる（簡易な AbortSignal）
-     *
-     * 注意: チャンク読みは UI のためのもので、DB 保存とは別工程です。
-     */
+    * saveFileToHistoryWithProgress:
+    * - UI 用にチャンク読みして進捗を報告（既存の saveFileToHistory をそのまま呼ぶ）
+    * - options.signal: { aborted: boolean } をチェックして中断できる（簡易な AbortSignal）
+    *
+    * 注意: チャンク読みは UI のためのもので、DB 保存とは別工程です。
+    */
     async function saveFileToHistoryWithProgress(file, progressCallback, options = {}){
       try {
         if (progressCallback) progressCallback(0);
@@ -2345,7 +2469,7 @@
       }
       // --- end change ---
       clearMarkerElements();
-      // reset AB when opening a new item (predictable per-file behavior)
+      // reset AB when opening a new file (predictable per-file behavior)
       abA = null;
       abB = null;
       loopEnabled = false;
@@ -3186,4 +3310,3 @@
   </script>
 </body>
 </html>
-
