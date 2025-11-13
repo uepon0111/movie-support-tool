@@ -711,6 +711,48 @@
       }
     }
 
+    /* ============================
+       ここから：UI非表示/表示 の追加スタイル
+       - UI非表示時は viewer に .ui-hidden を付与して制御
+       - show button (#showUIBtn) は viewer の直接子に置き、常に表示切替可能
+       ============================ */
+
+    /* UI表示ボタン（右上に出す） */
+    #showUIBtn {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 1350;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 0 calc(var(--ctrl-padding-x) * 0.6);
+      height: calc(var(--ctrl-size) * 0.60);
+      min-width: calc(var(--ctrl-size) * 0.60);
+      border-radius: calc(var(--ctrl-radius) * 0.9);
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.95);
+      cursor: pointer;
+    }
+    /* viewer に .ui-hidden が付くと show ボタンを見せる */
+    #viewer.ui-hidden #showUIBtn { display: inline-flex !important; }
+
+    /* viewer に .ui-hidden が付くと video-wrap 内の UI を隠す（ボタン群と top-control, skip-group, overlay-right を対象） */
+    #viewer.ui-hidden .video-wrap .top-control,
+    #viewer.ui-hidden .video-wrap .skip-group,
+    #viewer.ui-hidden .video-wrap .overlay-right,
+    #viewer.ui-hidden .video-wrap button {
+      display: none !important;
+    }
+
+    /* ただしシークバー（topSeek）自体はプレイヤー体験上残しておく場合があるため隠すかどうかは要件に応じて調整可能。
+       今回の要件は「画面内の全てのボタン」を隠すことなのでシークバーは残したままにしています（入力要素は button ではない）。 */
+
+    /* ============================
+       ここまで：UI非表示/表示 の追加スタイル
+       ============================ */
+
   </style>
 </head>
 <body>
@@ -878,8 +920,17 @@
           <button id="abLoopBtn" class="ab-btn" aria-pressed="false" aria-label="A/B ループ オン/オフ">オフ</button>
           <button id="abResetBtn" class="ab-btn" aria-label="A/B リセット">C</button>
         </div>
+
+        <!-- --- ここに UI非表示ボタンをループボタン類の下に配置（要望） --- -->
+        <div style="margin-top:8px; display:flex; justify-content:flex-end; gap:8px;">
+          <button id="hideUIBtn" class="ab-btn" aria-label="UIを非表示">UI非表示</button>
+        </div>
       </div>
     </div>
+
+    <!-- UI表示ボタン（viewer の直接の右上、UI非表示時にのみ表示される） -->
+    <button id="showUIBtn" type="button" aria-hidden="true">UI表示</button>
+
   </section>
   <script>
     const fileInput = document.getElementById('fileInput');
@@ -924,6 +975,8 @@
     const abSetBtn = document.getElementById('abSetBtn');
     const abLoopBtn = document.getElementById('abLoopBtn');
     const abResetBtn = document.getElementById('abResetBtn');
+    const hideUIBtn = document.getElementById('hideUIBtn'); // 追加
+    const showUIBtn = document.getElementById('showUIBtn'); // 追加
     const categorySelect = document.getElementById('categorySelect');
     const editCategoryBtn = document.getElementById('editCategoryBtn');
     const addCategoryInModal = document.getElementById('addCategoryInModal');
@@ -2224,6 +2277,9 @@
       pickerScreen.style.display = 'none';
       viewer.style.display = 'block';
       viewer.setAttribute('aria-hidden','false');
+      // ensure UI visible when opening viewer (reset)
+      viewer.classList.remove('ui-hidden');
+      showUIBtn.setAttribute('aria-hidden','true');
       // hide reload button on viewer screen
       if (reloadBtn) reloadBtn.style.display = 'none';
       video.controls = false;
@@ -2709,6 +2765,9 @@
       }
       // show reload button again when returning to picker screen
       if (reloadBtn) reloadBtn.style.display = '';
+      // ensure UI visible for next open
+      viewer.classList.remove('ui-hidden');
+      showUIBtn.setAttribute('aria-hidden','true');
     });
     // A/B helpers
     function formatTimeForLabel(sec){
@@ -3436,6 +3495,34 @@
         }
       });
     }
+
+    // ========== 追加: UI 非表示 / 表示 のロジック ==========
+    // hideUIBtn, showUIBtn は上で取得済み
+    if (hideUIBtn) {
+      hideUIBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // add class to viewer to hide controls (css handles visibility)
+        viewer.classList.add('ui-hidden');
+        // update accessibility attr for show button
+        showUIBtn.setAttribute('aria-hidden','false');
+        // try focusing show button for easy recovery
+        try { showUIBtn.focus(); } catch(e){}
+      });
+    }
+    if (showUIBtn) {
+      showUIBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // remove the class to restore UI
+        viewer.classList.remove('ui-hidden');
+        showUIBtn.setAttribute('aria-hidden','true');
+        // move focus back to play button if available
+        try { playToggleBtn.focus(); } catch(e){}
+      });
+    }
+    // ensure that when opening viewer the UI is visible (not left hidden)
+    // already handled in openViewer, but also ensure on back etc
+    // ========== ここまで追加 ==========
+
     window.addEventListener('beforeunload', () => {
       if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
     });
