@@ -3510,15 +3510,26 @@
       });
     }
     if (showUIBtn) {
-      showUIBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        // remove the class to restore UI
-        viewer.classList.remove('ui-hidden');
-        showUIBtn.setAttribute('aria-hidden','true');
-        // move focus back to play button if available
-        try { playToggleBtn.focus(); } catch(e){}
-      });
-    }
+  // 共通処理を切り出して click / touchend の両方で使う
+  const restoreUI = (e) => {
+    // stopPropagation して viewer に届かないようにする
+    e.stopPropagation();
+    // touchend の場合はデフォルトの合成クリックを防ぐため preventDefault も呼ぶ
+    if (e.cancelable) try { e.preventDefault(); } catch (err) {}
+    // restore UI
+    viewer.classList.remove('ui-hidden');
+    showUIBtn.setAttribute('aria-hidden','true');
+    // move focus back to play button if available
+    try { playToggleBtn.focus(); } catch(e){}
+  };
+
+  // マウス/キーボード由来の click
+  showUIBtn.addEventListener('click', (e) => { restoreUI(e); });
+
+  // タッチ由来のイベントが viewer に届くと tryStartOnTap() が実行されてしまうため、
+  // touchend でも伝播を止め、デフォルトも防いでおく（passive:false が必要）
+  showUIBtn.addEventListener('touchend', (e) => { restoreUI(e); }, { passive: false });
+}
     // ensure that when opening viewer the UI is visible (not left hidden)
     // already handled in openViewer, but also ensure on back etc
     // ========== ここまで追加 ==========
